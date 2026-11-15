@@ -4440,6 +4440,8 @@ static void init_builtins(Checker *c) {
                    ty_func(c, NULL, 0, ty_seq(c, TY_LIST, ty_any(c)), 1));
     define_builtin(c, "sorted", ty_func(c, NULL, 0, ty_seq(c, TY_LIST, ty_any(c)), 1));
     define_builtin(c, "round", ty_func(c, NULL, 0, ty_any(c), 1));
+    define_builtin(c, "print", ty_func(c, NULL, 0, ty_void(c), 1));
+    define_builtin(c, "println", ty_func(c, NULL, 0, ty_void(c), 1));
     define_builtin(c, "input", ty_func(c, NULL, 0, ty_str(c), 1));
     define_builtin(c, "Scanner", ty_class(c, "Scanner"));
     define_builtin(c, "Files", ty_module(c, "Files"));

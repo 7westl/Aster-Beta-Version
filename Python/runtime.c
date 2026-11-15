@@ -5807,6 +5807,10 @@ void Interp_Init(Interp *in) {
                RValue_Builtin(in, Builtin_New(in, "sorted", bi_sorted)));
     Env_Define(in, in->globals, "round",
                RValue_Builtin(in, Builtin_New(in, "round", bi_round)));
+    Env_Define(in, in->globals, "print",
+               RValue_Builtin(in, Builtin_New(in, "print", bi_print)));
+    Env_Define(in, in->globals, "println",
+               RValue_Builtin(in, Builtin_New(in, "println", bi_println)));
     Env_Define(in, in->globals, "input",
                RValue_Builtin(in, Builtin_New(in, "input", bi_input)));
     Env_Define(in, in->globals, "_aster_now_ms",
@@ -5937,6 +5941,7 @@ void Interp_Init(Interp *in) {
     arglist = List_New(in);
     for (i = 0; in->argv && (int)i < in->argc; i++)
         List_Append(in, arglist, RValue_Str(in, AsterString_FromCStr(in->argv[i])));
+    
 
     /* System은 import해야만 쓸 수 있는 내장 모듈이다. */
     {

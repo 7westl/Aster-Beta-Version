@@ -1,289 +1,289 @@
 == Integer ==
-2147483647
--2147483648
-32
-4
-123
--456
-77
-255
-10
-7
-7
-7.0
-7.0
-255
-ff
-ff
-ffffffff
-10
-1010
--1
-1
-0
-1
--1
-0
-9
-3
-12
-3
-32
-64
-4
-7
-true
-false
-false
--1
-7
-true
+2147483647 Integer.MAX_VALUE
+-2147483648 Integer.MIN_VALUE
+32 Integer.SIZE
+4 Integer.BYTES
+123 Integer.parseInt("123")
+-456 Integer.parseInt("-456")
+77 Integer.parseInt("+77")
+255 Integer.parseInt("ff", 16)
+10 Integer.parseInt("1010", 2)
+7 iv->intValue()
+7 iv->longValue()
+7.0 iv->floatValue()
+7.0 iv->doubleValue()
+255 Integer.toString(255)
+ff Integer.toString(255, 16)
+ff Integer.toHexString(255)
+ffffffff Integer.toHexString(-1)
+10 Integer.toOctalString(8)
+1010 Integer.toBinaryString(10)
+-1 Integer.compare(3, 9)
+1 Integer.compare(9, 3)
+0 Integer.compare(4, 4)
+1 Integer.compareUnsigned(-1, 1)
+-1 Integer.signum(-5)
+0 Integer.signum(0)
+9 Integer.max(3, 9)
+3 Integer.min(3, 9)
+12 Integer.sum(3, 9)
+3 Integer.bitCount(7)
+32 Integer.bitCount(-1)
+64 Integer.highestOneBit(100)
+4 Integer.lowestOneBit(12)
+7 iv->hashCode()
+true iv->equals(Integer.valueOf(7))
+false iv->equals(Integer.valueOf(8))
+false iv->equals(null)
+-1 iv->compareTo(Integer.valueOf(9))
+7 iv
+true iv == Integer.valueOf(7)
 == Long ==
-9223372036854775807
--9223372036854775808
-64
-8
-9223372036854775807
--9223372036854775807
-255
-ff
-ffffffffffffffff
-8000000000000000
-10
-1010
-11111111
--1
-1
--1
-9
-3
-12
-3
-64
-64
-32
-42
-42
-42
-true
-false
--1
-42
+9223372036854775807 Long.MAX_VALUE
+-9223372036854775808 Long.MIN_VALUE
+64 Long.SIZE
+8 Long.BYTES
+9223372036854775807 Long.parseLong("9223372036854775807")
+-9223372036854775807 Long.parseLong("-9223372036854775807")
+255 Long.parseLong("ff", 16)
+ff Long.toHexString(255)
+ffffffffffffffff Long.toHexString(-1)
+8000000000000000 Long.toHexString(Long.MIN_VALUE)
+10 Long.toOctalString(8)
+1010 Long.toBinaryString(10)
+11111111 Long.toString(255, 2)
+-1 Long.compare(3, 9)
+1 Long.compareUnsigned(-1, 1)
+-1 Long.signum(-5)
+9 Long.max(3, 9)
+3 Long.min(3, 9)
+12 Long.sum(3, 9)
+3 Long.bitCount(7)
+64 Long.bitCount(-1)
+64 Long.highestOneBit(100)
+32 Long.lowestOneBit(96)
+42 lv->intValue()
+42 lv->longValue()
+42 lv->hashCode()
+true lv->equals(Long.valueOf(42))
+false lv->equals(Integer.valueOf(42))
+-1 lv->compareTo(Long.valueOf(100))
+42 lv
 == Double ==
-1.7976931348623157e+308
-5e-324
-NaN
-Infinity
--Infinity
-3.5
-250.0
-true
-false
-true
-true
-false
--1
-0
-1
-3.25
-3.5
-3.5
-3
-3
-false
-false
-3
-3.5
-true
-false
-true
-== Float ==
-3.4028234663852886e+38
-1.401298464324817e-45
-1.5
-NaN
-true
-true
--1
-0
-2.5
-2.5
-2.5
-2
-false
-2
-2.5
-true
-false
+1.7976931348623157e+308 Double.MAX_VALUE
+5e-324 Double.MIN_VALUE
+NaN Double.toString(Double.NaN)
+Infinity Double.toString(Double.POSITIVE_INFINITY)
+-Infinity Double.toString(Double.NEGATIVE_INFINITY)
+3.5 Double.parseDouble("3.5")
+250.0 Double.parseDouble("2.5e2")
+true Double.isNaN(Double.NaN)
+false Double.isNaN(1.0)
+true Double.isInfinite(Double.POSITIVE_INFINITY)
+true Double.isFinite(1.5)
+false Double.isFinite(Double.NaN)
+-1 Double.compare(1.5, 2.5)
+0 Double.compare(2.5, 2.5)
+1 Double.compare(Double.NaN, 1.0)
+3.25 Double.toString(3.25)
+3.5 dv->doubleValue()
+3.5 dv->floatValue()
+3 dv->intValue()
+3 dv->longValue()
+false dv->isNaN()
+false dv->isInfinite()
+3 dv->hashCode()
+3.5 dv
+true dv->equals(Double.valueOf("3.5"))
+false dv->equals(Double.valueOf("4.5"))
+true nanBox->equals(Double.valueOf(Double.NaN))
+== Float == "== Float =="
+3.4028234663852886e+38 Float.MAX_VALUE
+1.401298464324817e-45 Float.MIN_VALUE
+1.5 Float.parseFloat("1.5")
+NaN Float.toString(Float.NaN)
+true Float.isNaN(Float.NaN)
+true Float.isInfinite(Float.NEGATIVE_INFINITY)
+-1 Float.compare(1.5, 2.5)
+0 Float.compare(2.5, 2.5)
+2.5 Float.toString(2.5)
+2.5 fv->floatValue()
+2.5 fv->doubleValue()
+2 fv->intValue()
+false fv->isNaN()
+2 fv->hashCode()
+2.5 fv
+true fv->equals(Float.valueOf(2.5))
+false fv->equals(Float.valueOf(3.5))
 == Boolean ==
-true
-false
-true
-false
-true
-false
-false
-true
-true
-false
-true
-true
-1231
-true
-true
-false
+true Boolean.TRUE
+false Boolean.FALSE
+true Boolean.parseBoolean("True")
+false Boolean.parseBoolean("yes")
+true Boolean.valueOf(true)
+false Boolean.toString(false)
+false Boolean.logicalAnd(true, false)
+true Boolean.logicalOr(true, false)
+true Boolean.logicalXor(true, false)
+false Boolean.logicalXor(true, true)
+true Boolean.logicalNot(false)
+true bv->booleanValue()
+1231 bv->hashCode()
+true bv
+true bv->equals(new Boolean(true))
+false bv->equals(new Boolean(false))
 == Character ==
-0
-1114111
-true
-false
-true
-false
-false
-true
-false
-true
-false
-true
-false
-Q
-q
-7
-12
--1
--1
-0
-x
-120
-x
-true
-false
+0 Character.MIN_VALUE
+1114111 Character.MAX_VALUE
+true Character.isDigit("7")
+false Character.isDigit("x")
+true Character.isLetter("A")
+false Character.isLetter("1")
+false Character.isLetterOrDigit("_")
+true Character.isWhitespace(" ")
+false Character.isWhitespace("q")
+true Character.isUpperCase("A")
+false Character.isUpperCase("a")
+true Character.isLowerCase("a")
+false Character.isLowerCase("A")
+Q Character.toUpperCase("q")
+q Character.toLowerCase("Q")
+7 Character.getNumericValue("7")
+12 Character.getNumericValue("c")
+-1 Character.getNumericValue("#")
+-1 Character.compare("a", "c")
+0 Character.compare("c", "c")
+x cv->charValue()
+120 cv->hashCode()
+x cv
+true cv->equals(Character.valueOf("x"))
+false cv->equals(Character.valueOf("y"))
 == Math ==
-3.141592653589793
-2.718281828459045
-7
-2.5
-4
-8
-3.0
-3
-2.0
-9.0
-true
-256.0
-1.0
-1.0
-3.0
-0.0
-1.0
-0.0
-1.5707963267948966
-0.0
-0.0
-0.7853981633974483
-0.0
-1.0
-0.0
-3.0
-4.0
-3
--2
-2.0
-4.0
-5.0
-3.141592653589793
-180.0
--1
--1.0
-0.0
-5
-5
-42
-3
--4
-1
--1
--3.5
-true
+3.141592653589793 Math.PI
+2.718281828459045 Math.E
+7 Math.abs(-7)
+2.5 Math.abs(-2.5)
+4 Math.abs(4)
+8 Math.max(3, 8)
+3.0 Math.max(2.0, 3.0)
+3 Math.min(3, 8)
+2.0 Math.min(2.0, 3.0)
+9.0 Math.sqrt(81.0)
+true Math.abs(Math.cbrt(27.0) - 3.0) < 0.000000001
+256.0 Math.pow(2.0, 8.0)
+1.0 Math.exp(0.0)
+1.0 Math.log(Math.E)
+3.0 Math.log10(1000.0)
+0.0 Math.sin(0.0)
+1.0 Math.cos(0.0)
+0.0 Math.tan(0.0)
+1.5707963267948966 Math.asin(1.0)
+0.0 Math.acos(1.0)
+0.0 Math.atan(0.0)
+0.7853981633974483 Math.atan2(1.0, 1.0)
+0.0 Math.sinh(0.0)
+1.0 Math.cosh(0.0)
+0.0 Math.tanh(0.0)
+3.0 Math.floor(3.7)
+4.0 Math.ceil(3.2)
+3 Math.round(2.5)
+-2 Math.round(-2.5)
+2.0 Math.rint(2.5)
+4.0 Math.rint(3.5)
+5.0 Math.hypot(3.0, 4.0)
+3.141592653589793 Math.toRadians(180.0)
+180.0 Math.toDegrees(Math.PI)
+-1 Math.signum(-9)
+-1.0 Math.signum(-2.5)
+0.0 Math.signum(0.0)
+5 Math.addExact(2, 3)
+5 Math.subtractExact(9, 4)
+42 Math.multiplyExact(6, 7)
+3 Math.floorDiv(7, 2)
+-4 Math.floorDiv(-7, 2)
+1 Math.floorMod(-7, 2)
+-1 Math.floorMod(7, -2)
+-3.5 Math.copySign(3.5, -1.0)
+true randomOk
 == inheritance ==
-21
-21.0
-21.0
-21
-21
-42
-42
-42
-true
-false
-1234567890123
-1234567890123
-Long
+21 n->intValue()
+21.0 n->floatValue()
+21.0 n->doubleValue()
+21 n->toString()
+21 n
+42 obj->toString()
+42 obj->hashCode()
+42 str(obj)
+true obj->equals(new Integer(42))
+false obj->equals(new Integer(43))
+1234567890123 numLong->longValue()
+1234567890123 numLong->intValue()
+Long typeName(numLong)
 == interfaces ==
--1
-1
-0
-1
-true
-1.2
-5
-s
-st
-Aster
-5
-A
-ster
-Aster
-0
-2
-false
-true
+-1 v1->compareTo(v2)
+1 v2->compareTo(v1)
+0 v1->compareTo(v1->cloneValue())
+1 cmp->compareTo(v1)
+true cl != null
+1.2 v1
+5 text->length()
+s text->charAt(1)
+st text->substring(1, 3)
+Aster text->toString()
+5 seq->length()
+A seq->charAt(0)
+ster seq->substring(1)
+Aster seq->toString()
+0 task->runs
+2 task->runs
+false task->closed
+true task->closed
 == StringBuffer ==
-Hello, Aster
-12
-Hello, Aster2026
-Hello, Aster20262.5
-Hello, Aster20262.5true
->> Hello, Aster20262.5true
-10
-5
-Hello, Aster20262.5true
-Hello
->
->> He
-8
- 
-Hi He   
-i He   
- He   
-   eH 
-6
-   eH 
-true
-false
-true
-abc
-3
+Hello, Aster sb->toString()
+12 sb->length()
+Hello, Aster2026 sb->toString()
+Hello, Aster20262.5 sb->toString()
+Hello, Aster20262.5true sb->toString()
+>> Hello, Aster20262.5true sb->toString()
+10 sb->indexOf("Aster")
+5 sb->indexOf("l", 1)
+Hello, Aster20262.5true sb->substring(3)
+Hello sb->substring(3, 8)
+> sb->charAt(0)
+>> He sb->toString()
+8 sb->length()
+  sb->charAt(7)
+Hi He    sb->toString()
+i He    sb->toString()
+ He    sb->toString()
+   eH  sb->toString()
+6 len(sb)
+   eH  sb
+true sb->equals(sb)
+false sb->isEmpty()
+true sb->isEmpty()
+abc sb2->toString()
+3 sb2->length()
 == String helpers ==
-abc
-3
-42
-3.5
-true
-a-b-c
-1 + 2 = 3
-y-x
-literal {} and 1
+abc builder.toString()
+3 builder.length()
+42 valueOf(42)
+3.5 valueOf(3.5)
+true valueOf(true)
+a-b-c join("-", words)
+1 + 2 = 3 format("{} + {} = {}", addArgs)
+y-x format("{1}-{0}", swapArgs)
+literal {} and 1 format("literal {{}} and {}", addArgs)
 == errors ==
-parse: ValueError
-radix: ValueError
-char: ValueError
-overflow: OverflowError
-true
-true
-2147483647
--2147483648
--9223372036854775808
-int-range: ValueError
-long-range: ValueError
-long-hex-range: ValueError
+parse: ValueError "parse: " + e.name
+radix: ValueError "radix: " + e.name
+char: ValueError "char: " + e.name
+overflow: OverflowError "overflow: " + e.name
+true Double.isNaN(Double.parseDouble("NaN"))
+true Float.isInfinite(Float.parseFloat("-Infinity"))
+2147483647 Integer.parseInt("2147483647")
+-2147483648 Integer.parseInt("-2147483648")
+-9223372036854775808 Long.parseLong("-9223372036854775808")
+int-range: ValueError "int-range: " + e.name
+long-range: ValueError "long-range: " + e.name
+long-hex-range: ValueError "long-hex-range: " + e.name

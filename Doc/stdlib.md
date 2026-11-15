@@ -1,16 +1,16 @@
 # Aster 표준 라이브러리
 
 Aster의 표준 라이브러리는 전역 내장 함수, 내장 모듈(`System`), 값에 붙는 메서드,
-그리고 `Scanner`, `Files` 객체로 구성됩니다. `print`/`println`과 `System.*`는 내장
-모듈이라 `import System.stdout.*;`, `import System;`처럼 먼저 가져와야 합니다.
+그리고 `Scanner`, `Files` 객체로 구성됩니다. `print`/`println`은 전역 내장 함수라
+바로 쓸 수 있고, `System.*`는 `import System;`으로 먼저 가져와야 합니다.
 문법 일반은 [language.md](language.md)를 봅니다.
 
 ## 1. 콘솔 출력과 전역 내장 함수
 
 | 함수 | 설명 |
 | --- | --- |
-| `print(값...)` | 값을 공백으로 구분해 표준 출력에 씁니다(줄바꿈 없음). `import System.stdout.*;` 필요. |
-| `println(값...)` | `print` 후 줄바꿈합니다. `import System.stdout.*;` 필요. |
+| `print(값...)` | 값을 공백으로 구분해 표준 출력에 씁니다(줄바꿈 없음). import 없이 씁니다. |
+| `println(값...)` | `print` 후 줄바꿈합니다. import 없이 씁니다. |
 | `len(x)` | 문자열(코드포인트 수)/리스트/튜플/딕셔너리/세트의 길이. `__len__`을 가진 객체에도 씁니다. 제너레이터는 지원하지 않습니다. |
 | `list(x)` | 반복 가능한 값을 리스트로 복사합니다. 인자가 없으면 빈 리스트. |
 | `tuple(x)` | 튜플로 복사합니다. |
@@ -179,8 +179,10 @@ System.setRecursionLimit(2000);
 System.exit(2);
 ```
 
-`import System.stdout.*;`는 표준 출력의 `print`/`println`을, `import
-System.stderr.*;`는 표준 에러의 `print`/`println`을 현재 범위에 바로 정의합니다.
+`print`/`println`은 전역 내장 함수라 import 없이 표준 출력에 씁니다.
+`import System.stderr.*;`를 하면 그 범위에서는 표준 에러로 출력하는
+`print`/`println`이 전역 정의를 가립니다. `import System.stdout.*;`는 이제
+필요 없지만 기존 코드를 위해 계속 동작합니다.
 
 ## 8. Scanner
 

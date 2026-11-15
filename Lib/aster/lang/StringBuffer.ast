@@ -76,7 +76,7 @@ export class StringBuffer extends Object {
         return self->delete(index, index + 1);
     }
 
-    public fn replace(int start, int end, str value) -> StringBuffer {
+    public fn replaceIndex(int start, int end, str value) -> StringBuffer {
         str cur = self->content();
         if (start < 0 or end > cur.length() or start > end) {
             throw "string index out of range" as IndexError;
@@ -85,6 +85,35 @@ export class StringBuffer extends Object {
         self->buf.append(cur.substring(0, start));
         self->buf.append(value);
         self->buf.append(cur.substring(end));
+        return self;
+    }
+
+    public fn replace(str previous, str next) -> StringBuffer {
+        if (previous == next) {
+            return self;
+        }
+        if (previous == "") {
+            throw "a previous string must not be empty" as ValueError;
+        }
+
+        str cur = self->content();
+        str result = "";
+        int i = 0;
+
+        while (i < cur.length()) {
+            int found = cur.substring(i).indexOf(previous);
+            if (found < 0) {
+                result = result + cur.substring(i);
+                break;
+            }
+            found = i + found;
+            result = result + cur.substring(i, found);
+            result = result + next;
+            i = found + previous.length();
+        }
+
+        self->buf.clear();
+        self->buf.append(result);
         return self;
     }
 

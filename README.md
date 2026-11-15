@@ -173,8 +173,6 @@ make
 `hello.ast` 파일을 만듭니다.
 
 ```aster
-import System.stdout.*;
-
 str name = "Aster";
 println("Hello, " + name + "!");
 ```

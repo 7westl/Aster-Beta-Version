@@ -10,6 +10,12 @@
 #include <sys/stat.h>
 #if defined(_WIN32)
 #include <io.h>
+/* windows.h는 내부 헤더의 VT_* 열거자와 충돌하므로 콘솔 API만 직접 선언한다. */
+__declspec(dllimport) void *__stdcall GetStdHandle(unsigned long n_std_handle);
+__declspec(dllimport) int __stdcall GetConsoleMode(void *handle, unsigned long *mode);
+__declspec(dllimport) int __stdcall SetConsoleMode(void *handle, unsigned long mode);
+#define ASTER_ENABLE_VT_PROCESSING 0x0004
+#define ASTER_STD_OUTPUT_HANDLE ((unsigned long)-11)
 #else
 #include <unistd.h>
 #endif
@@ -173,6 +179,14 @@ static int stdin_is_tty(void) {
 #endif
 }
 
+static int stdout_is_tty(void) {
+#if defined(_WIN32)
+    return _isatty(_fileno(stdout));
+#else
+    return isatty(fileno(stdout));
+#endif
+}
+
 static int repl_append(char **buf, size_t *len, size_t *cap, const char *s, size_t n) {
     if (*len + n + 1 > *cap) {
         size_t want = *cap ? *cap : 1024;
@@ -224,10 +238,32 @@ static char *trim_start(char *s) {
     return s;
 }
 
+/* 출력이 파이프면 지울 화면이 없으므로 아무것도 쓰지 않는다. */
+static void repl_clear_screen(void) {
+    if (!stdout_is_tty())
+        return;
+#if defined(_WIN32)
+    /* Windows 콘솔은 VT 처리를 켜야 ANSI 이스케이프를 해석한다. */
+    {
+        void *h = GetStdHandle(ASTER_STD_OUTPUT_HANDLE);
+        unsigned long mode;
+        if (h && GetConsoleMode(h, &mode))
+            SetConsoleMode(h, mode | ASTER_ENABLE_VT_PROCESSING);
+    }
+#endif
+    fputs("\033[2J\033[H", stdout);
+    fflush(stdout);
+}
+
 static int repl_command(const char *line) {
     if (!strcmp(line, ":quit") || !strcmp(line, ":q") || !strcmp(line, ":exit"))
         return 1;
+    if (!strcmp(line, ":clear")) {
+        repl_clear_screen();
+        return 0;
+    }
     if (!strcmp(line, ":help")) {
+        puts("  clear   clear the screen (also :clear)");
         puts("  :help   show this help");
         puts("  :quit   leave the REPL (also Ctrl-D)");
         puts("  multi-line input continues until the block is complete");
@@ -328,6 +364,16 @@ static int run_repl(Interp *interp) {
                 if (repl_command(cmd))
                     break;
                 continue;
+            }
+            {
+                size_t n = strlen(cmd);
+                while (n && (cmd[n - 1] == '\n' || cmd[n - 1] == '\r' ||
+                             cmd[n - 1] == ' ' || cmd[n - 1] == '\t'))
+                    n--;
+                if (n == 5 && !strncmp(cmd, "clear", 5)) {
+                    repl_clear_screen();
+                    continue;
+                }
             }
         }
         if (!repl_append(&buf, &len, &cap, line, strlen(line))) {

@@ -32,26 +32,24 @@ aster                      # 파일이 없으면 대화형 REPL
 
 ```aster
 import System;
-import System.stdout.*;
 
 println("인자 수: " + str(len(System.args)));
 ```
 
-`print`/`println`과 `System.*`는 전역이 아니라 내장 모듈입니다. 쓰려면 먼저
-import해야 하며, import하지 않으면 `NameError`입니다.
+`print`/`println`은 전역 내장 함수라 import 없이 쓸 수 있습니다. `System.*`는
+내장 모듈이라 먼저 import해야 하며, import하지 않으면 `NameError`입니다.
 
 ```aster
 import System;             # System.out / System.err / System.in / System.args ...
-import System.stdout.*;    # print, println
-import System.stderr.*;    # print, println (표준 에러로 출력)
 
-println("hello");
+println("hello");          # 전역 print/println: 표준 출력
 System.out.println("hello");
 System.err.println("error");
 ```
 
-이 문서의 예제에서 `println`/`print`를 쓰려면 `import System.stdout.*;`가
-필요합니다.
+`import System.stderr.*;`를 하면 그 범위에서는 `print`/`println`이 표준 에러로
+출력하며 전역 정의를 가립니다. `import System.stdout.*;`는 이제 필요 없지만
+기존 코드를 위해 계속 동작합니다.
 
 ### 대화형 REPL
 
@@ -66,6 +64,7 @@ System.err.println("error");
 >>> :quit
 ```
 
+- `clear` (또는 `:clear`): 화면을 지웁니다. 출력이 터미널이 아니면 무시합니다.
 - `:help`: 명령 목록 출력
 - `:quit` (또는 `:q`, `:exit`, Ctrl-D): 종료
 
@@ -1307,9 +1306,11 @@ str line = sc.nextLine();
 int n = sc.nextInt();
 ```
 
-`System.out`/`System.err`에는 `print`와 `println`이 있습니다. `System`은 내장
-모듈이라 `import System;`으로 가져와야 합니다. `import System.stdout.*;`는
-`print`/`println`을 현재 범위에 바로 정의합니다. `Scanner`는
+`print`/`println`은 전역 내장 함수라 import 없이 표준 출력에 씁니다(다른 전역
+함수와 마찬가지로 import 없이 사용). `System.out`/`System.err`에는 같은 기능의
+`print`와 `println`이 있고, `System`은 내장 모듈이라 `import System;`으로
+가져와야 합니다. `import System.stderr.*;`를 하면 그 범위에서는 `print`/`println`이
+표준 에러로 출력합니다. `Scanner`는
 `nextLine`, `next`, `nextInt`, `nextFloat`, `hasNextLine`, `hasNext`, `close`를
 제공합니다. `Files`는 `readString`, `writeString`, `readLines`, `exists`, `delete`를
 제공합니다. 자세한 내용은 [stdlib.md](stdlib.md)를 봅니다.
