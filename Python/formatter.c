@@ -16,12 +16,13 @@ enum {
     P_NOT = 6,
     P_CMP = 7,
     P_RANGE = 8,
-    P_ADD = 9,
-    P_MUL = 10,
-    P_UNARY = 11,
-    P_POW = 12,
-    P_POSTFIX = 13,
-    P_PRIMARY = 14
+    P_SHIFT = 9,
+    P_ADD = 10,
+    P_MUL = 11,
+    P_UNARY = 12,
+    P_POW = 13,
+    P_POSTFIX = 14,
+    P_PRIMARY = 15
 };
 
 static void fmt_expr(FILE *out, expr_ty e, int min_prec);
@@ -449,6 +450,8 @@ static void fmt_expr(FILE *out, expr_ty e, int min_prec) {
         case Div: prec = P_MUL; text = " / "; break;
         case FloorDiv: prec = P_MUL; text = " // "; break;
         case Mod: prec = P_MUL; text = " % "; break;
+        case LShift: prec = P_SHIFT; text = " << "; break;
+        case RShift: prec = P_SHIFT; text = " >> "; break;
         default: prec = P_POW; text = " ** "; break;
         }
         if (min_prec > prec) {
@@ -863,6 +866,8 @@ static const char *assign_op_str(assign_op_ty op) {
     case AssignFloorDiv: return "//=";
     case AssignMod: return "%=";
     case AssignPow: return "**=";
+    case AssignLShift: return "<<=";
+    case AssignRShift: return ">>=";
     default: return "=";
     }
 }

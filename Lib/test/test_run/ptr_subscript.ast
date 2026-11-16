@@ -1,0 +1,40 @@
+fn bump(list<int>* xs, int i) -> void {
+    xs[i] = xs[i] + 10;
+    xs[i] += 1;
+    xs[i]++;
+}
+
+fn walk(list<list<int>>* board, int x, int y) -> void {
+    if (board[x][y] == 1) { return; }
+    if (board[x][y] == 2) { board[x][y] = 9; return; }
+    board[x][y] = 9;
+    if (board[x][y + 1] == 1 and board[x + 1][y] == 1) { return; }
+    if (board[x][y + 1] != 1) { walk(board, x, y + 1); }
+    else { walk(board, x + 1, y); }
+}
+
+list<int> a = [1, 2, 3];
+list<int>* pa = &a;
+bump(pa, 0);
+println(repr(a));
+
+list<list<int>> board = [[1, 1, 1, 1], [1, 0, 2, 1], [1, 0, 0, 1], [1, 1, 1, 1]];
+list<list<int>>* pb = &board;
+walk(pb, 1, 1);
+println(repr(board));
+
+println(repr(pa[0:2]));
+pa[1:2] = [7];
+println(repr(a));
+
+dict<str, int> d = {"x": 1};
+dict<str, int>* pd = &d;
+pd["y"] = 2;
+println(pd["x"] + pd["y"]);
+
+list<int>* np = null;
+try {
+    println(np[0]);
+} catch (NullPointerError e) {
+    println("null: " + e.message);
+}

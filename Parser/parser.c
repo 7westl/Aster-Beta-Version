@@ -1653,6 +1653,48 @@ static expr_ty p_arith(Parser *p) {
     }
 }
 
+/* '>>' 토큰은 없다. 타입 위치의 중첩 제네릭(Box<Box<int>>)과 구분하기 위해
+   식 문맥에서는 서로 붙어 있는 '>' 두 개를 오른쪽 시프트로 읽는다. */
+static int p_shift_op(Parser *p, operator_ty *op) {
+    AsterToken *t = cur(p);
+    if (tok_eq(t, "<<")) {
+        *op = LShift;
+        p->pos++;
+        return 1;
+    }
+    if (tok_eq(t, ">")) {
+        AsterToken *n = tok_at(p, p->pos + 1);
+        if (tok_eq(n, ">") && n->line == t->end_line && n->col == t->end_col) {
+            *op = RShift;
+            p->pos += 2;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static expr_ty p_shift(Parser *p) {
+    size_t start = p->pos;
+    expr_ty left = p_arith(p);
+    if (!left) {
+        p->pos = start;
+        return NULL;
+    }
+    for (;;) {
+        operator_ty op;
+        expr_ty right;
+        size_t mark = p->pos;
+        if (!p_shift_op(p, &op))
+            return left;
+        right = p_arith(p);
+        if (!right) {
+            p->pos = mark;
+            return left;
+        }
+        left = _Aster_BinOp(left, op, right, ATTRS(p, start), p->arena);
+    }
+}
+
 static int p_comp_op(Parser *p) {
     static const struct { const char *text; cmpop_ty op; } ops[] = {
         {"==", Eq}, {"!=", NotEq}, {"<=", LtE}, {">=", GtE}, {"<", Lt}, {">", Gt},
@@ -1668,7 +1710,7 @@ static int p_comp_op(Parser *p) {
 /* 일반 식 수준의 포함 범위: 1..5, 1..n+1, 1..5..2 */
 static expr_ty p_range_value(Parser *p) {
     size_t start = p->pos;
-    expr_ty lo = p_arith(p);
+    expr_ty lo = p_shift(p);
     expr_ty hi, step = NULL;
     if (!lo) {
         p->pos = start;
@@ -1676,13 +1718,13 @@ static expr_ty p_range_value(Parser *p) {
     }
     if (!accept(p, ".."))
         return lo;
-    hi = p_arith(p);
+    hi = p_shift(p);
     if (!hi)
         syntax_error_at(p, p->pos, "range end expression is required after '..'");
     {
         size_t mark = p->pos;
         if (accept(p, "..")) {
-            step = p_arith(p);
+            step = p_shift(p);
             if (!step)
                 p->pos = mark;
         }
@@ -2599,7 +2641,7 @@ static stmt_ty p_var_decl(Parser *p) {
 
 static int p_assign_op(Parser *p) {
     static const char *const ops[] = {
-        "=", "+=", "-=", "*=", "/=", "//=", "%=", "**=",
+        "=", "+=", "-=", "*=", "/=", "//=", "%=", "**=", "<<=", ">>=",
     };
     size_t i;
     for (i = 0; i < sizeof ops / sizeof *ops; i++) {

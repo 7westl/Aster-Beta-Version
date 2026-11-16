@@ -30,7 +30,7 @@ __declspec(dllimport) int __stdcall SetConsoleMode(void *handle, unsigned long m
 #include "internal/runtime.h"
 #include "internal/typecheck.h"
 
-#define ASTER_VERSION "Alpha 1.3.3"
+#define ASTER_VERSION "Alpha 1.5.0"
 
 static char *read_stream(FILE *f, size_t *size) {
     size_t cap = 4096;

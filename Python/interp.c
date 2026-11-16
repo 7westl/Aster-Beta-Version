@@ -1276,6 +1276,8 @@ static const char *binop_hook_name(operator_ty op) {
     case FloorDiv: return "__floordiv__";
     case Mod: return "__mod__";
     case Pow: return "__pow__";
+    case LShift: return "__lshift__";
+    case RShift: return "__rshift__";
     }
     return NULL;
 }
@@ -1289,6 +1291,8 @@ static const char *binop_reflected_name(operator_ty op) {
     case FloorDiv: return "__rfloordiv__";
     case Mod: return "__rmod__";
     case Pow: return "__rpow__";
+    case LShift: return "__rlshift__";
+    case RShift: return "__rrshift__";
     }
     return NULL;
 }
@@ -1329,6 +1333,30 @@ static RValue *apply_binop(Interp *in, operator_ty op, RValue *left, RValue *rig
         return hooked;
     if (in->sig != SIG_OK)
         return NULL;
+
+    if (op == LShift || op == RShift) {
+        int64_t a;
+        int64_t b;
+        if (left->kind != RV_INT || right->kind != RV_INT)
+            return RT_ThrowValue(in, "TypeError", "shift operations require integers");
+        a = left->u.i;
+        b = right->u.i;
+        if (b < 0)
+            return RT_ThrowValue(in, "ValueError", "negative shift count");
+        if (op == LShift) {
+            if (b >= 64)
+                return RValue_Int(in, 0);
+            return RValue_Int(in, (int64_t)((uint64_t)a << (unsigned)b));
+        }
+        if (b >= 64)
+            return RValue_Int(in, a < 0 ? -1 : 0);
+        {
+            uint64_t r = (uint64_t)a >> (unsigned)b;
+            if (a < 0 && b > 0)
+                r |= ~(uint64_t)0 << (64 - (unsigned)b);
+            return RValue_Int(in, (int64_t)r);
+        }
+    }
 
     if (op == Add && (left->kind == RV_STR || right->kind == RV_STR)) {
         RValue *result = RValue_Str(in, RString_Concat(in, RValue_ToString(in, left),
@@ -1418,6 +1446,9 @@ static RValue *apply_binop(Interp *in, operator_ty op, RValue *left, RValue *rig
         }
         case Pow:
             return RValue_Float(in, __builtin_pow(a, b));
+        case LShift:
+        case RShift:
+            break;   /* 시프트는 위에서 정수 전용으로 처리한다 */
         }
         return null_value(in);
     }
@@ -1471,6 +1502,9 @@ static RValue *apply_binop(Interp *in, operator_ty op, RValue *left, RValue *rig
                 return int_overflow(in);
             return RValue_Int(in, r);
         }
+        case LShift:
+        case RShift:
+            break;   /* 시프트는 위에서 정수 전용으로 처리한다 */
         }
         return null_value(in);
     }
@@ -1492,6 +1526,10 @@ static operator_ty assign_op_to_operator(assign_op_ty op) {
         return Mod;
     case AssignPow:
         return Pow;
+    case AssignLShift:
+        return LShift;
+    case AssignRShift:
+        return RShift;
     default:
         return Add;
     }
@@ -2778,11 +2816,13 @@ static int declared_type_known(typeref_ty ty) {
         return 0;
     switch (ty->kind) {
     case Primitive_kind:
-    case Pointer_kind:
-    case Nullable_kind:
     case StructRef_kind:
     case FunctionTy_kind:
         return 1;
+    case Pointer_kind:
+        return declared_type_known(ty->v.Pointer.base);
+    case Nullable_kind:
+        return declared_type_known(ty->v.Nullable.base);
     case Named_kind: {
         const char *name = ty->v.Named.name;
         return strcmp(name, "var") && strcmp(name, "any") && strcmp(name, "list") &&
@@ -3145,6 +3185,13 @@ static Signal exec_slice_assign(Interp *in, expr_ty target, RValue *value, Env *
 
     if (in->sig != SIG_OK)
         return in->sig;
+    while (container && container->kind == RV_PTR) {
+        if (!container->u.ptr.slot || !*container->u.ptr.slot) {
+            RT_Throw(in, "NullPointerError", "dereferenced a null pointer");
+            return SIG_THROW;
+        }
+        container = *container->u.ptr.slot;
+    }
     if (!container || container->kind != RV_LIST) {
         RT_Throw(in, "TypeError", "slice assignment is only allowed on lists");
         return SIG_THROW;
@@ -4417,6 +4464,15 @@ static RValue *eval_slice(Interp *in, RValue *container, expr_ty slice_expr, Env
     if (!eval_slice_bound(in, slice_expr->v.Slice.upper, env, &has_upper, &upper))
         return NULL;
 
+    while (container && container->kind == RV_PTR) {
+        if (!container->u.ptr.slot || !*container->u.ptr.slot)
+            return RT_ThrowValue(in, "NullPointerError",
+                                 "dereferenced a null pointer");
+        container = *container->u.ptr.slot;
+    }
+    if (!container)
+        return RT_ThrowValue(in, "TypeError", "cannot slice null");
+
     if (container->kind == RV_LIST)
         len = (int64_t)container->u.list->len;
     else if (container->kind == RV_TUPLE)
@@ -5105,14 +5161,14 @@ static RValue *eval(Interp *in, expr_ty e, Env *env) {
             return RT_ThrowValue(in, "ValueError", "range step cannot be zero");
         list = List_New(in);
         if (step > 0) {
-            for (i = lo; i <= hi; i += step) {
+            for (i = lo; i < hi; i += step) {
                 List_Append(in, list, RValue_Int(in, i));
                 if (i > INT64_MAX - step)
                     break;
             }
         }
         else {
-            for (i = lo; i >= hi; i += step) {
+            for (i = lo; i > hi; i += step) {
                 List_Append(in, list, RValue_Int(in, i));
                 if (i < INT64_MIN - step)
                     break;

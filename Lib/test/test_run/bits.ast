@@ -1,0 +1,9 @@
+import aster.lang.Bits;
+
+println(Bits.bitAnd(12, 10));
+println(Bits.bitOr(12, 10));
+println(Bits.bitXor(12, 10));
+println(Bits.bitNot(0));
+println(Bits.bitNot(-1));
+println(Bits.bitAnd(-1, 255));
+println(Bits.bitOr(1 << 40, 3));

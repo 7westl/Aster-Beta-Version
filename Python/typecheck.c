@@ -1488,8 +1488,10 @@ static Sym *module_export_sym(ModuleInfo *mi, const char *name) {
 
 /* C 런타임이 직접 제공해서 .ast 파일이 없는 모듈. */
 static int is_opaque_module(const char *name) {
-    return !strcmp(name, "System") || !strncmp(name, "System.", 7) ||
-           !strcmp(name, "Files") || !strcmp(name, "aster.util.regex.Native");
+    return !strcmp(name, "System") ||
+           !strncmp(name, "System.", 7) ||
+           !strcmp(name, "Files") ||
+           !strcmp(name, "aster.util.regex.Native");
 }
 
 static char *read_source_file(const char *path, size_t *size) {
@@ -2544,6 +2546,8 @@ static const char *binop_hook(operator_ty op) {
     case FloorDiv: return "__floordiv__";
     case Mod: return "__mod__";
     case Pow: return "__pow__";
+    case LShift: return "__lshift__";
+    case RShift: return "__rshift__";
     }
     return NULL;
 }
@@ -2583,6 +2587,11 @@ static Ty *binop_type(Checker *c, operator_ty op, Ty *l, Ty *r) {
         if ((l->kind == TY_LIST || l->kind == TY_TUPLE) &&
             (r->kind == TY_INT || r->kind == TY_ANY))
             return l;
+    }
+    if (op == LShift || op == RShift) {
+        if (l->kind == TY_INT && r->kind == TY_INT)
+            return ty_int(c);
+        return ty_any(c);
     }
     if (l->kind == TY_ANY || r->kind == TY_ANY)
         return ty_any(c);
@@ -2823,6 +2832,12 @@ static Ty *infer(Checker *c, expr_ty e) {
     }
     case Subscript_kind: {
         Ty *container = infer(c, e->v.Subscript.value);
+        /* 포인터 첨자 p[i]는 (*p)[i]로 해석한다. 역참조 대상이 컨테이너일
+           때만 적용하고, 클래스·다단 포인터·스칼라는 기존 동작을 유지한다. */
+        if (container->kind == TY_PTR && container->a &&
+            (container->a->kind == TY_LIST || container->a->kind == TY_TUPLE ||
+             container->a->kind == TY_DICT || container->a->kind == TY_STR))
+            container = container->a;
         if (e->v.Subscript.index->kind == Slice_kind) {
             expr_ty sl = e->v.Subscript.index;
             if (sl->v.Slice.lower)
@@ -3718,6 +3733,11 @@ static void check_assign_target(Checker *c, expr_ty target, Ty *value) {
     }
     case Subscript_kind: {
         Ty *container = infer(c, target->v.Subscript.value);
+        /* 읽기와 같은 규칙: 컨테이너를 가리키는 포인터의 첨자는 (*p)[i]다. */
+        if (container->kind == TY_PTR && container->a &&
+            (container->a->kind == TY_LIST || container->a->kind == TY_TUPLE ||
+             container->a->kind == TY_DICT || container->a->kind == TY_STR))
+            container = container->a;
         if (target->v.Subscript.index->kind == Slice_kind) {
             infer(c, target->v.Subscript.index);
             if (container->kind == TY_LIST && value->kind == TY_LIST)

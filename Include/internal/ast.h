@@ -33,9 +33,9 @@ typedef enum _prim { IntT = 1, FloatT = 2, BoolT = 3, StrT = 4, NullT = 5 } prim
 typedef enum _access { Public = 1, Protected = 2, Private = 3, Internal = 4 } access_ty;
 typedef enum _boolop { And = 1, Or = 2 } boolop_ty;
 typedef enum _unaryop { UAdd = 1, USub = 2, Not = 3 } unaryop_ty;
-typedef enum _operator { Add = 1, Sub = 2, Mult = 3, Div = 4, FloorDiv = 5, Mod = 6, Pow = 7 } operator_ty;
+typedef enum _operator { Add = 1, Sub = 2, Mult = 3, Div = 4, FloorDiv = 5, Mod = 6, Pow = 7, LShift = 8, RShift = 9 } operator_ty;
 typedef enum _cmpop { Eq = 1, NotEq = 2, Lt = 3, LtE = 4, Gt = 5, GtE = 6 } cmpop_ty;
-typedef enum _assign_op { AssignEq = 1, AssignAdd = 2, AssignSub = 3, AssignMult = 4, AssignDiv = 5, AssignFloorDiv = 6, AssignMod = 7, AssignPow = 8 } assign_op_ty;
+typedef enum _assign_op { AssignEq = 1, AssignAdd = 2, AssignSub = 3, AssignMult = 4, AssignDiv = 5, AssignFloorDiv = 6, AssignMod = 7, AssignPow = 8, AssignLShift = 9, AssignRShift = 10 } assign_op_ty;
 
 enum _mod_kind { Module_kind = 1 };
 struct _mod {

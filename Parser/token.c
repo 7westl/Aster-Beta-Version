@@ -29,6 +29,7 @@ const char *const _AsterToken_Names[] = {
     "DOUBLESLASH",
     "PERCENT",
     "DOUBLESTAR",
+    "LSHIFT",
     "EQEQUAL",
     "NOTEQUAL",
     "LESS",
@@ -43,6 +44,8 @@ const char *const _AsterToken_Names[] = {
     "DOUBLESLASHEQUAL",
     "PERCENTEQUAL",
     "DOUBLESTAREQUAL",
+    "LSHIFTEQUAL",
+    "RSHIFTEQUAL",
     "DOTDOT",
     "PIPE",
     "VBAR",
@@ -55,6 +58,8 @@ const char *const _AsterToken_Names[] = {
 const ExactToken _AsterToken_Exact[] = {
     {"**=", TOK_DOUBLESTAREQUAL},
     {"//=", TOK_DOUBLESLASHEQUAL},
+    {"<<=", TOK_LSHIFTEQUAL},
+    {">>=", TOK_RSHIFTEQUAL},
     {"!=", TOK_NOTEQUAL},
     {"%=", TOK_PERCENTEQUAL},
     {"**", TOK_DOUBLESTAR},
@@ -67,6 +72,7 @@ const ExactToken _AsterToken_Exact[] = {
     {"..", TOK_DOTDOT},
     {"//", TOK_DOUBLESLASH},
     {"/=", TOK_SLASHEQUAL},
+    {"<<", TOK_LSHIFT},
     {"<=", TOK_LESSEQUAL},
     {"==", TOK_EQEQUAL},
     {"=>", TOK_FATARROW},
@@ -97,4 +103,4 @@ const ExactToken _AsterToken_Exact[] = {
     {"|", TOK_VBAR},
     {"}", TOK_RBRACE},
 };
-const int _AsterToken_ExactCount = 43;
+const int _AsterToken_ExactCount = 46;

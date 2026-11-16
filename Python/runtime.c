@@ -1924,6 +1924,17 @@ RValue *RValue_GetItem(Interp *in, RValue *container, RValue *index, int *ok) {
             return RT_ThrowValue(in, "KeyError", "%s", buf);
         }
         return RValue_Copy(in, value);
+    case RV_PTR:
+        if (!container->u.ptr.slot || !*container->u.ptr.slot) {
+            *ok = 0;
+            return RT_ThrowValue(in, "NullPointerError",
+                                 "dereferenced a null pointer");
+        }
+        return RValue_GetItem(in, *container->u.ptr.slot, index, ok);
+    case RV_NULL:
+        *ok = 0;
+        return RT_ThrowValue(in, "NullPointerError",
+                             "dereferenced a null pointer");
     case RV_OBJECT:
         if (RValue_HasMethod(in, container, "__getitem__")) {
             RValue *args[1];
@@ -1979,6 +1990,17 @@ int RValue_SetItem(Interp *in, RValue *container, RValue *index, RValue *value, 
     case RV_STR:
         *ok = 0;
         RT_Throw(in, "TypeError", "'str' object is immutable");
+        return 0;
+    case RV_PTR:
+        if (!container->u.ptr.slot || !*container->u.ptr.slot) {
+            *ok = 0;
+            RT_Throw(in, "NullPointerError", "dereferenced a null pointer");
+            return 0;
+        }
+        return RValue_SetItem(in, *container->u.ptr.slot, index, value, ok);
+    case RV_NULL:
+        *ok = 0;
+        RT_Throw(in, "NullPointerError", "dereferenced a null pointer");
         return 0;
     case RV_OBJECT:
         if (RValue_HasMethod(in, container, "__setitem__")) {
@@ -3003,18 +3025,26 @@ static RValue *bi_sum(Interp *in, RValue *self, RValue **args, size_t nargs) {
     size_t n = 0, i;
     RValue *acc;
     (void)self;
-    if (nargs < 1 || nargs > 2)
-        return RT_ThrowValue(in, "TypeError", "sum takes 1 or 2 arguments");
-    if (!iter_values(in, args[0], &items, &n))
-        return NULL;
-    acc = nargs == 2 ? RValue_Copy(in, args[1]) : RValue_Int(in, 0);
-    for (i = 0; i < n; i++) {
-        if (!numeric_add(in, acc, items[i], &acc)) {
-            free(items);
+    if (nargs == 0)
+        return RT_ThrowValue(in, "TypeError", "sum expected at least 1 argument, got 0");
+    if (nargs == 1 || (nargs == 2 && RValue_Iterable(args[0]))) {
+        if (!iter_values(in, args[0], &items, &n))
             return NULL;
+        acc = nargs == 2 ? RValue_Copy(in, args[1]) : RValue_Int(in, 0);
+        for (i = 0; i < n; i++) {
+            if (!numeric_add(in, acc, items[i], &acc)) {
+                free(items);
+                return NULL;
+            }
         }
+        free(items);
+        return acc;
     }
-    free(items);
+    acc = RValue_Copy(in, args[0]);
+    for (i = 1; i < nargs; i++) {
+        if (!numeric_add(in, acc, args[i], &acc))
+            return NULL;
+    }
     return acc;
 }
 
@@ -5894,6 +5924,8 @@ void Interp_Init(Interp *in) {
         AstClass *cls = Arena_Alloc(in->arena, sizeof(AstClass));
         *cls = *scanner_cls;
         Env_Define(in, in->globals, "Scanner", RValue_Class(in, cls));
+        AstModule *in_mod = register_builtin_module(in, "System.stdin");
+        Env_Define(in, in_mod->env, "Scanner", RValue_Class(in, cls));
     }
     scanner_obj = Arena_Alloc(in->arena, sizeof(AstInstance));   /* 미사용, 경고 방지 */
     (void)scanner_obj;
@@ -5948,7 +5980,6 @@ void Interp_Init(Interp *in) {
         AstModule *sys_mod = register_builtin_module(in, "System");
         AstModule *out_mod = register_builtin_module(in, "System.stdout");
         AstModule *err_mod = register_builtin_module(in, "System.stderr");
-        AstModule *in_mod = register_builtin_module(in, "System.stdin");
 
         Env_Define(in, out_mod->env, "print",
                    RValue_Builtin(in, Builtin_New(in, "print", bi_print)));
@@ -5974,7 +6005,6 @@ void Interp_Init(Interp *in) {
         Env_Define(in, sys_mod->env, "getRecursionLimit",
                    RValue_Builtin(in, Builtin_New(in, "getRecursionLimit",
                                                   system_get_recursion_limit)));
-        (void)in_mod;
     }
 
     Regex_Install(in);

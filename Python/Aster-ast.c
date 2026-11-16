@@ -2476,6 +2476,8 @@ static void dump_operator(FILE *out, operator_ty n) {
     case FloorDiv: fputs("FloorDiv()", out); break;
     case Mod: fputs("Mod()", out); break;
     case Pow: fputs("Pow()", out); break;
+    case LShift: fputs("LShift()", out); break;
+    case RShift: fputs("RShift()", out); break;
     }
 }
 
@@ -2502,6 +2504,8 @@ static void dump_assign_op(FILE *out, assign_op_ty n) {
     case AssignFloorDiv: fputs("AssignFloorDiv()", out); break;
     case AssignMod: fputs("AssignMod()", out); break;
     case AssignPow: fputs("AssignPow()", out); break;
+    case AssignLShift: fputs("AssignLShift()", out); break;
+    case AssignRShift: fputs("AssignRShift()", out); break;
     }
 }
 

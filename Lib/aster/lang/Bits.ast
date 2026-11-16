@@ -1,0 +1,48 @@
+/* aster.lang.Bits: 정수 비트 연산 헬퍼.
+   언어에 & | ^ ~ 연산자가 없으므로 >>와 %로 64비트 두 자리 보수 비트를
+   하나씩 계산한다. 시프트는 int 전용이고 %는 파이썬식이라
+   (value >> index) % 2는 항상 0 또는 1이다. */
+
+fn bitAt(int value, int index) -> int {
+    return (value >> index) % 2;
+}
+
+export fn bitAnd(int a, int b) -> int {
+    int out = 0;
+    int bit = 1;
+    for (int i; i = 0..64) {
+        if (bitAt(a, i) == 1 and bitAt(b, i) == 1) { out = out + bit; }
+        bit = bit << 1;
+    }
+    return out;
+}
+
+export fn bitOr(int a, int b) -> int {
+    int out = 0;
+    int bit = 1;
+    for (int i; i = 0..64) {
+        if (bitAt(a, i) == 1 or bitAt(b, i) == 1) { out = out + bit; }
+        bit = bit << 1;
+    }
+    return out;
+}
+
+export fn bitXor(int a, int b) -> int {
+    int out = 0;
+    int bit = 1;
+    for (int i; i = 0..64) {
+        if (bitAt(a, i) != bitAt(b, i)) { out = out + bit; }
+        bit = bit << 1;
+    }
+    return out;
+}
+
+export fn bitNot(int value) -> int {
+    int out = 0;
+    int bit = 1;
+    for (int i; i = 0..64) {
+        if (bitAt(value, i) == 0) { out = out + bit; }
+        bit = bit << 1;
+    }
+    return out;
+}

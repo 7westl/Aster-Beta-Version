@@ -1,0 +1,20 @@
+println(1 << 4);
+println(5 >> 1);
+println(-8 >> 1);
+println((-1) << 1);
+println(1 << 63);
+println(-1 >> 63);
+println(1 << 64);
+println(-1 >> 64);
+println(1 + 2 << 3);
+println(1 << 2 + 1);
+println(1 < 4 >> 1);
+
+int x = 3;
+x <<= 2;
+println(x);
+x >>= 1;
+println(x);
+
+list<list<int>> grid = [[1, 2], [3]];
+println(grid);

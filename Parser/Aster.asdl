@@ -187,7 +187,9 @@ module Aster
      boolop = And | Or
      unaryop = UAdd | USub | Not
      operator = Add | Sub | Mult | Div | FloorDiv | Mod | Pow
+              | LShift | RShift
      cmpop = Eq | NotEq | Lt | LtE | Gt | GtE
      assign_op = AssignEq | AssignAdd | AssignSub | AssignMult | AssignDiv
                | AssignFloorDiv | AssignMod | AssignPow
+               | AssignLShift | AssignRShift
 }
