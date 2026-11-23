@@ -10,15 +10,6 @@ Aster is a general-purpose programming language designed to provide a flexible, 
 
 Aster is a programming language project focused on building an independent language ecosystem.
 
-## Features
-
-- [Feature 1]
-- [Feature 2]
-- [Feature 3]
-- Object-oriented programming
-- Standard library
-- Cross-platform support
-
 ## Installation
 
 The recommended way to install Aster is through **Aster Setup Wizard**.
@@ -60,10 +51,6 @@ aster hello.ast
 | [Language Reference](docs/language.md) | Language syntax and specifications |
 | [Standard Library](docs/stdlib.md) | Standard library reference |
 | [Installation Guide](docs/installation.md) | Manual installation and setup |
-
-## Examples
-
-Explore the `examples/` directory to see Aster programs and practical usage examples.
 
 ## Development
 
