@@ -31,7 +31,7 @@ The recommended way to install Aster is through **Aster Setup Wizard**.
 aster --version
 ```
 
-**Download:** [Aster Setup Wizard](https://www.mediafire.com/file/l6m6hvc8zwjn1zd/Aster_Setup_Wizard.exe/file)
+**Download:** [Aster Setup Wizard](https://www.mediafire.com/file/lz1teu6176iz10q/aster-b1.0.0-amd64.exe/file)
 
 For manual installation, building from source, and `make install` layouts, see the
 [Installation Guide](Doc/installation.md).
