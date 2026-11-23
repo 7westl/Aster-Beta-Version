@@ -49,12 +49,12 @@ enum _stmt_kind { FunctionDef_kind = 1, ClassDef_kind = 2, InterfaceDef_kind = 3
 struct _stmt {
     enum _stmt_kind kind;
     union {
-        struct { identifier name; asdl_seq *type_params; asdl_seq *params; ret_ty returns; asdl_seq *body; int is_extern; } FunctionDef;
-        struct { identifier name; asdl_seq *type_params; typeref_ty base; asdl_seq *interfaces; asdl_seq *members; } ClassDef;
-        struct { identifier name; asdl_seq *type_params; asdl_seq *methods; } InterfaceDef;
-        struct { identifier tag; identifier alias; asdl_seq *members; } StructDef;
-        struct { typeref_ty ty; identifier name; initializer_ty init; int is_const; } VarDecl;
-        struct { identifier name; asdl_seq *members; asdl_seq *methods; } EnumDef;
+        struct { identifier name; asdl_seq *type_params; asdl_seq *params; ret_ty returns; asdl_seq *body; int is_extern; access_ty access; int is_static; } FunctionDef;
+        struct { identifier name; asdl_seq *type_params; typeref_ty base; asdl_seq *interfaces; asdl_seq *members; access_ty access; } ClassDef;
+        struct { identifier name; asdl_seq *type_params; asdl_seq *methods; access_ty access; } InterfaceDef;
+        struct { identifier tag; identifier alias; asdl_seq *members; access_ty access; } StructDef;
+        struct { typeref_ty ty; identifier name; initializer_ty init; int is_const; int is_readonly; access_ty access; } VarDecl;
+        struct { identifier name; asdl_seq *members; asdl_seq *methods; access_ty access; } EnumDef;
         struct { asdl_seq *names; expr_ty value; } Destructure;
         struct { expr_ty test; expr_ty message; } Assert;
         struct { expr_ty target; assign_op_ty op; expr_ty value; } Assign;
@@ -71,7 +71,7 @@ struct _stmt {
         struct { asdl_seq *path; int wildcard; identifier alias; } Import;
         struct { asdl_seq *module; asdl_seq *names; } ImportFrom;
         struct { stmt_ty body; } Export;
-        struct { identifier name; identifier base; } ExceptionDef;
+        struct { identifier name; identifier base; access_ty access; } ExceptionDef;
         struct { expr_ty value; } ExprStmt;
     } v;
     int lineno;
@@ -243,7 +243,7 @@ enum _member_kind { Field_kind = 1, Method_kind = 2, Constructor_kind = 3, Prope
 struct _member {
     enum _member_kind kind;
     union {
-        struct { access_ty access; typeref_ty ty; identifier name; expr_ty value; int is_static; } Field;
+        struct { access_ty access; typeref_ty ty; identifier name; expr_ty value; int is_static; int is_const; int is_readonly; } Field;
         struct { access_ty access; identifier name; asdl_seq *type_params; asdl_seq *params; ret_ty returns; asdl_seq *body; int is_static; } Method;
         struct { asdl_seq *params; asdl_seq *body; } Constructor;
         struct { access_ty access; typeref_ty ty; identifier name; } Property;
@@ -272,12 +272,12 @@ struct _member_init {
 
 /* Constructors */
 mod_ty _Aster_Module(asdl_seq *package, asdl_seq *body, Arena *arena);
-stmt_ty _Aster_FunctionDef(identifier name, asdl_seq *type_params, asdl_seq *params, ret_ty returns, asdl_seq *body, int is_extern, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
-stmt_ty _Aster_ClassDef(identifier name, asdl_seq *type_params, typeref_ty base, asdl_seq *interfaces, asdl_seq *members, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
-stmt_ty _Aster_InterfaceDef(identifier name, asdl_seq *type_params, asdl_seq *methods, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
-stmt_ty _Aster_StructDef(identifier tag, identifier alias, asdl_seq *members, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
-stmt_ty _Aster_VarDecl(typeref_ty ty, identifier name, initializer_ty init, int is_const, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
-stmt_ty _Aster_EnumDef(identifier name, asdl_seq *members, asdl_seq *methods, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
+stmt_ty _Aster_FunctionDef(identifier name, asdl_seq *type_params, asdl_seq *params, ret_ty returns, asdl_seq *body, int is_extern, access_ty access, int is_static, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
+stmt_ty _Aster_ClassDef(identifier name, asdl_seq *type_params, typeref_ty base, asdl_seq *interfaces, asdl_seq *members, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
+stmt_ty _Aster_InterfaceDef(identifier name, asdl_seq *type_params, asdl_seq *methods, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
+stmt_ty _Aster_StructDef(identifier tag, identifier alias, asdl_seq *members, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
+stmt_ty _Aster_VarDecl(typeref_ty ty, identifier name, initializer_ty init, int is_const, int is_readonly, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
+stmt_ty _Aster_EnumDef(identifier name, asdl_seq *members, asdl_seq *methods, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 stmt_ty _Aster_Destructure(asdl_seq *names, expr_ty value, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 stmt_ty _Aster_Assert(expr_ty test, expr_ty message, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 stmt_ty _Aster_Assign(expr_ty target, assign_op_ty op, expr_ty value, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
@@ -296,7 +296,7 @@ stmt_ty _Aster_Continue(int lineno, int col_offset, int end_lineno, int end_col_
 stmt_ty _Aster_Import(asdl_seq *path, int wildcard, identifier alias, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 stmt_ty _Aster_ImportFrom(asdl_seq *module, asdl_seq *names, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 stmt_ty _Aster_Export(stmt_ty body, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
-stmt_ty _Aster_ExceptionDef(identifier name, identifier base, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
+stmt_ty _Aster_ExceptionDef(identifier name, identifier base, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 stmt_ty _Aster_ExprStmt(expr_ty value, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 expr_ty _Aster_Lambda(asdl_seq *params, ret_ty returns, expr_ty body, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 expr_ty _Aster_Pipe(expr_ty value, expr_ty func, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
@@ -365,7 +365,7 @@ initializer_ty _Aster_ExprInit(expr_ty value, Arena *arena);
 initializer_ty _Aster_PositionalInit(asdl_seq *values, Arena *arena);
 initializer_ty _Aster_DesignatedInit(asdl_seq *items, Arena *arena);
 designation_ty _Aster_designation(identifier field, expr_ty value, Arena *arena);
-member_ty _Aster_Field(access_ty access, typeref_ty ty, identifier name, expr_ty value, int is_static, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
+member_ty _Aster_Field(access_ty access, typeref_ty ty, identifier name, expr_ty value, int is_static, int is_const, int is_readonly, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 member_ty _Aster_Method(access_ty access, identifier name, asdl_seq *type_params, asdl_seq *params, ret_ty returns, asdl_seq *body, int is_static, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 member_ty _Aster_Constructor(asdl_seq *params, asdl_seq *body, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 member_ty _Aster_Property(access_ty access, typeref_ty ty, identifier name, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);

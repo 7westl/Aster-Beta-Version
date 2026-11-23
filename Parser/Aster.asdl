@@ -13,18 +13,22 @@ module Aster
      mod = Module(identifier* package, stmt* body)
  
      stmt = FunctionDef(identifier name, type_param* type_params, param* params,
-                        ret returns, stmt* body, int is_extern)
+                        ret returns, stmt* body, int is_extern,
+                        access? access, int is_static)
           | ClassDef(identifier name, type_param* type_params, typeref? base,
-                     typeref* interfaces, member* members)
+                     typeref* interfaces, member* members, access? access)
           | InterfaceDef(identifier name, type_param* type_params,
-                        signature* methods)
+                        signature* methods, access? access)
           -- alias가 있으면 typedef struct, 없으면 plain struct
-          | StructDef(identifier tag, identifier? alias, struct_member* members)
-          | VarDecl(typeref ty, identifier name, initializer init, int is_const)
+          | StructDef(identifier tag, identifier? alias, struct_member* members,
+                      access? access)
+          | VarDecl(typeref ty, identifier name, initializer init, int is_const,
+                    int is_readonly, access? access)
           -- enum Color { RED, GREEN, BLUE }  (값은 선언 순서 ordinal)
           -- enum Shape { Circle(float r), Rect(float w, float h), Empty }
           -- members 뒤 ';' 다음에 메서드를 둘 수 있다.
-          | EnumDef(identifier name, enum_member* members, member* methods)
+          | EnumDef(identifier name, enum_member* members, member* methods,
+                    access? access)
           -- 'var (a, b) = expr;' 또는 '(a, b) = expr;'
           | Destructure(identifier* names, expr value)
           | Assert(expr test, expr? message)
@@ -57,7 +61,7 @@ module Aster
           -- 'export <선언>' — 모듈에서 공개할 선언을 표시한다.
           | Export(stmt body)
           -- 'exception 이름 [extends 부모];'
-          | ExceptionDef(identifier name, identifier? base)
+          | ExceptionDef(identifier name, identifier? base, access? access)
           | ExprStmt(expr value)
           attributes (int lineno, int col_offset, int end_lineno, int end_col_offset)
 
@@ -169,8 +173,9 @@ module Aster
  
      access = Public | Protected | Private | Internal
  
-     -- access가 None이면 기본값(private)을 의미 분석에서 적용한다.
-     member = Field(access? access, typeref ty, identifier name, expr? value, int is_static)
+     -- access가 None이면 제한 없음을 뜻한다.
+     member = Field(access? access, typeref ty, identifier name, expr? value,
+                    int is_static, int is_const, int is_readonly)
             | Method(access? access, identifier name, type_param* type_params,
                      param* params, ret returns, stmt* body, int is_static)
             | Constructor(param* params, stmt* body)

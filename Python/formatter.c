@@ -968,6 +968,10 @@ static void fmt_class_member(FILE *out, member_ty m, int indent) {
         fputs(access_str(m->v.Field.access), out);
         if (m->v.Field.is_static)
             fputs("static ", out);
+        if (m->v.Field.is_const)
+            fputs("const ", out);
+        else if (m->v.Field.is_readonly)
+            fputs("readonly ", out);
         fmt_type(out, m->v.Field.ty);
         fputc(' ', out);
         fputs(m->v.Field.name, out);
@@ -1076,6 +1080,9 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
     switch (s->kind) {
     case FunctionDef_kind:
         ind(out, indent);
+        fputs(access_str(s->v.FunctionDef.access), out);
+        if (s->v.FunctionDef.is_static)
+            fputs("static ", out);
         if (s->v.FunctionDef.is_extern) {
             fputs("extern fn ", out);
             fputs(s->v.FunctionDef.name, out);
@@ -1100,6 +1107,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
         break;
     case ClassDef_kind:
         ind(out, indent);
+        fputs(access_str(s->v.ClassDef.access), out);
         fputs("class ", out);
         fputs(s->v.ClassDef.name, out);
         fmt_type_params(out, s->v.ClassDef.type_params);
@@ -1122,6 +1130,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
         break;
     case InterfaceDef_kind:
         ind(out, indent);
+        fputs(access_str(s->v.InterfaceDef.access), out);
         fputs("interface ", out);
         fputs(s->v.InterfaceDef.name, out);
         fmt_type_params(out, s->v.InterfaceDef.type_params);
@@ -1143,6 +1152,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
         break;
     case StructDef_kind:
         ind(out, indent);
+        fputs(access_str(s->v.StructDef.access), out);
         if (s->v.StructDef.alias) {
             fputs("typedef struct ", out);
             fputs(s->v.StructDef.tag, out);
@@ -1170,8 +1180,11 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
         break;
     case VarDecl_kind:
         ind(out, indent);
+        fputs(access_str(s->v.VarDecl.access), out);
         if (s->v.VarDecl.is_const)
             fputs("const ", out);
+        else if (s->v.VarDecl.is_readonly)
+            fputs("readonly ", out);
         fmt_type(out, s->v.VarDecl.ty);
         fputc(' ', out);
         fputs(s->v.VarDecl.name, out);
@@ -1181,6 +1194,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
     case EnumDef_kind: {
         size_t nmethods = asdl_seq_LEN(s->v.EnumDef.methods);
         ind(out, indent);
+        fputs(access_str(s->v.EnumDef.access), out);
         fputs("enum ", out);
         fputs(s->v.EnumDef.name, out);
         fputs(" { ", out);
@@ -1419,6 +1433,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
         break;
     case ExceptionDef_kind:
         ind(out, indent);
+        fputs(access_str(s->v.ExceptionDef.access), out);
         fputs("exception ", out);
         fputs(s->v.ExceptionDef.name, out);
         if (s->v.ExceptionDef.base) {

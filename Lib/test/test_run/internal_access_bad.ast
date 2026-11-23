@@ -1,0 +1,4 @@
+import modules.internal_helper;
+
+var v = internal_helper.makeVault();
+println(v->secret);

@@ -1,0 +1,12 @@
+class Box {
+    readonly int value;
+    constructor(int v) {
+        self->value = v;
+    }
+    fn reset() -> void {
+        self->value = 0;
+    }
+}
+
+Box b = new Box(1);
+b.reset();

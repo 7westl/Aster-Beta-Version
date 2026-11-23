@@ -1,0 +1,3 @@
+class Box {
+    static readonly int value;
+}

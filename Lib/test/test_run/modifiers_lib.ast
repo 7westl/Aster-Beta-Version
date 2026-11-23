@@ -1,0 +1,16 @@
+public class Exposed {
+    public static const int ANSWER = 42;
+    private int hidden;
+    readonly int id;
+    constructor(int v) {
+        self->id = v;
+        self->hidden = v;
+    }
+    internal fn secret() -> int { return self->hidden; }
+    static fn helper() -> int { return Exposed.ANSWER; }
+    public fn shown() -> int { return self->secret() + Exposed.helper(); }
+}
+private class Hidden {}
+internal fn module_only() -> int { return 7; }
+static fn file_local() -> int { return 8; }
+fn plain_but_not_exported() -> int { return 9; }

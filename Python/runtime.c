@@ -1350,6 +1350,7 @@ static void fill_fields(Interp *in, AstClass *cls, InstField *fields, size_t *in
             continue;
         fields[*index].name = cls->fields[i].name;
         fields[*index].cell = RValue_Null(in);
+        fields[*index].is_const = cls->fields[i].is_const;
         (*index)++;
     }
 }
@@ -5778,6 +5779,27 @@ void Module_AddExport(AstModule *module, Interp *in, const char *name) {
     module->exports[module->nexports++] = name;
 }
 
+/* 기본 export 모드에서 이름을 숨긴다(private/internal/static 선언). */
+void Module_HideExport(AstModule *module, Interp *in, const char *name) {
+    size_t i;
+    (void)in;
+    for (i = 0; i < module->nhidden; i++) {
+        if (!strcmp(module->hidden[i], name))
+            return;
+    }
+    module->hidden = xrealloc(module->hidden,
+                              (module->nhidden + 1) * sizeof(const char *));
+    module->hidden[module->nhidden++] = name;
+}
+
+static int module_name_hidden(AstModule *module, const char *name) {
+    size_t i;
+    for (i = 0; i < module->nhidden; i++)
+        if (!strcmp(module->hidden[i], name))
+            return 1;
+    return 0;
+}
+
 RValue *Module_GetExported(Interp *in, AstModule *module, const char *name) {
     RValue **cell;
     (void)in;
@@ -5794,7 +5816,7 @@ RValue *Module_GetExported(Interp *in, AstModule *module, const char *name) {
                 return *cell;
         return NULL;
     }
-    return public_name ? *cell : NULL;
+    return public_name && !module_name_hidden(module, name) ? *cell : NULL;
 }
 
 void Interp_AddModuleDir(Interp *in, const char *dir) {

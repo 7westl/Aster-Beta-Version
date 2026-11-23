@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux archive
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: |
+          make
+          make check
+      - name: Package
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          arch="$(echo "${{ runner.arch }}" | tr '[:upper:]' '[:lower:]')"
+          name="aster-${version}-linux-${arch}"
+          tar -czf "${name}.tar.gz" aster Lib/aster README.md LICENSE
+          sha256sum "${name}.tar.gz" > SHA256SUMS-linux.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: |
+            aster-*.tar.gz
+            SHA256SUMS-linux.txt
+
+  macos:
+    name: macOS archive
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: |
+          make
+          make check
+      - name: Package
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          arch="$(echo "${{ runner.arch }}" | tr '[:upper:]' '[:lower:]')"
+          name="aster-${version}-macos-${arch}"
+          tar -czf "${name}.tar.gz" aster Lib/aster README.md LICENSE
+          shasum -a 256 "${name}.tar.gz" > SHA256SUMS-macos.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: |
+            aster-*.tar.gz
+            SHA256SUMS-macos.txt
+
+  windows:
+    name: Windows archive
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make
+            zip
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-python
+      - name: Build and test
+        run: |
+          make
+          make check PYTHON=python
+      - name: Package
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          name="aster-${version}-windows-x86_64"
+          zip -r "${name}.zip" aster.exe Lib/aster README.md LICENSE
+          sha256sum "${name}.zip" > SHA256SUMS-windows.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            aster-*.zip
+            SHA256SUMS-windows.txt
+
+  publish:
+    name: Publish GitHub Release
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Show artifacts
+        run: ls -l dist && cat dist/SHA256SUMS-*.txt
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag

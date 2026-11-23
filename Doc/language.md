@@ -96,7 +96,7 @@ self public protected private internal if else while for break continue return
 throw try catch finally switch case default typedef struct and or not is in
 true false sizeof int float bool str null void super exception export yield`
 - **소프트 키워드**: `const static enum assert extern constructor getter setter property
-when vararg varkwarg`.
+when vararg varkwarg readonly`.
   지정된 위치에서만 키워드로 취급되므로 변수 이름으로도 쓸 수 있습니다.
   (`yield`는 하드 키워드입니다. `vararg`/`varkwarg`는 매개변수 목록에서만,
   `when`은 `case` 패턴 뒤에서만 키워드입니다.)
@@ -188,6 +188,20 @@ var xs = [1, 2, 3];     # list<int>
 **선언할 때 반드시 초기화**해야 하고, 다시 대입하면 타입 검사 단계에서
 `cannot assign to const variable` 오류가 납니다(검사를 건너뛴 경로도 실행
 단계에서 한 번 더 막습니다). import한 `const`도 같은 규칙이 적용됩니다.
+
+함수 안의 지역 변수에도 `const`와 `readonly`를 쓸 수 있습니다. 지역 변수의
+`readonly`는 `const`와 같게 동작합니다(초기화 필수, 재대입 불가). `self->field`의
+`readonly`는 생성자에서만 대입할 수 있는데(7장 참고), 지역 변수에는 생성자가
+없으므로 항상 고정됩니다.
+
+```aster
+const int LIMIT = 3;
+readonly int step = 2;     # const처럼 동작
+```
+
+접근 제한자(`public`, `protected`, `private`, `internal`)는 지역 변수 앞에
+붙일 수 있지만, 지역 변수의 범위를 넘는 의미가 없으므로 검사에 영향을 주지
+않습니다. 허용되는 위치는 최상위 선언(12장)과 클래스 멤버(7장)입니다.
 
 ### 선언과 기본값
 
@@ -768,8 +782,28 @@ println(p->sum());
 
 - 필드와 메서드에는 `public`, `protected`, `private`, `internal`을 붙일 수 있습니다.
   접근 제어는 **명시한 경우에만** 타입 검사기가 강제합니다. 생략하면 제한이 없습니다.
-  `private`는 선언한 클래스 안에서만, `protected`는 그 클래스와 하위 클래스에서만
-  쓸 수 있습니다. `internal`은 모듈 밖에서도 쓸 수 있습니다(현재 검사 없음).
+  `private`는 선언한 클래스 안에서만, `protected`는 그 클래스와 하위 클래스에서만,
+  `internal`은 선언한 모듈 안에서만 쓸 수 있습니다.
+- 필드에는 `const`와 `readonly`를 붙일 수 있습니다. `const` 필드는 선언할 때
+  **반드시 초기화**해야 하고, 이후 어떤 곳에서도 대입할 수 없습니다
+  (`cannot assign to const field`). `readonly` 인스턴스 필드는 선언한 클래스(또는
+  하위 클래스)의 생성자 안에서만 대입할 수 있습니다. 초기화 없이 선언해도 되며,
+  생성자 밖에서 대입하면 `cannot assign to readonly field ... outside its
+  constructor` 오류가 납니다. `static readonly` 필드는 초기화가 필수이고 이후
+  대입할 수 없습니다.
+- `static`은 필드와 메서드 모두에 붙일 수 있습니다. `static` 메서드 앞에는
+  `public static fn`처럼 접근자를 함께 쓸 수 있습니다.
+
+  ```aster
+  class Config {
+      public static const int VERSION = 1;
+      static readonly int BUILD = 7;
+      readonly int id;
+      constructor(int v) {
+          self->id = v;       # readonly는 생성자에서 대입 가능
+      }
+  }
+  ```
 - 생성자는 `constructor(...)`로 쓰고 반환 타입을 쓰지 않습니다.
 - 생성자는 **오버로드**할 수 있습니다. 같은 클래스에 인자 모양이 다른 생성자를 여러
   개 두면 호출 시 인자 수와 타입으로 고릅니다. 하위 클래스 생성자는
@@ -861,9 +895,10 @@ class Circle implements Shape {
 }
 ```
 
-인터페이스 메서드는 본문 없이 `;`로 끝납니다. 현재 구현은 **런타임 강제가 없는
-계약**입니다. 인터페이스를 구현했다고 선언해도 메서드 존재 여부를 실행 시점에
-검사하지 않습니다.
+인터페이스 메서드는 본문 없이 `;`로 끝납니다. 구현 여부는 **타입 검사 단계**에서
+검사합니다. `implements`한 클래스에 필수 메서드가 없거나 서명이 맞지 않으면
+컴파일 오류입니다. 반면 실행 시점에는 별도의 계약 검사 없이 메서드 표에서
+이름을 찾으므로, `--no-check`로 실행하면 이 검사를 건너뜁니다.
 
 인터페이스에는 타입 매개변수를 붙일 수 있습니다. `implements`할 때 타입 인자
 개수가 맞아야 하며, 메서드 서명은 타입 인자를 지운 상태(erasure)로 검사합니다.
@@ -1234,6 +1269,22 @@ from helper import *;
   또는 현재 디렉터리의 `Lib`) → 패키지 의존성 경로 → `ASTER_PATH`.
 - `export`가 하나라도 있으면 **export한 이름만** import할 수 있습니다.
   `export`가 없으면 밑줄로 시작하지 않는 모든 이름을 공개합니다.
+- 최상위 클래스·인터페이스·구조체·열거형·함수·변수에는 `export` 없이도
+  `public`, `private`, `internal`을 붙일 수 있습니다. `public` 선언이 하나라도
+  있으면 `export`가 있는 것과 같은 **명시적 공개 모드**가 됩니다.
+  `private`/`internal` 선언은 그 모듈 밖으로 나가지 않습니다.
+- 최상위 `static fn`은 `export`하지 않는 한 모듈 전용입니다(C의 `static`과 같은
+  의미). `export static fn`처럼 쓰면 공개됩니다.
+- `protected`는 클래스 멤버에만 쓸 수 있습니다. 최상위 선언에 쓰면
+  `protected is only allowed on class members` 오류가 납니다.
+
+  ```aster
+  # util.ast
+  public class Point { public int x; }   # import 가능
+  private class Helper { ... }           # 모듈 전용
+  internal fn normalize() -> int { ... } # 모듈 전용
+  static fn local_only() -> int { ... }  # 모듈 전용
+  ```
 - 모듈은 이름별로 한 번만 로드되고 캐시됩니다.
 - `import *`는 공개 이름을 현재 범위로 가져옵니다.
 - import한 모듈이 공개한 클래스·인터페이스의 상속·구현 관계를 타입 검사기가
@@ -1379,7 +1430,7 @@ Aster는 실행 전에 정적 타입 검사를 합니다.
 - 구조체 필드, 클래스 멤버, enum 변형 이름의 존재
 - 서브스크립트: 리스트/튜플/문자열 인덱스는 `int`, 딕셔너리 키는 키 타입,
   set/frozenset은 서브스크립트 불가
-- 인터페이스 구현(메서드 존재와 서명), `private`/`protected` 접근 범위
+- 인터페이스 구현(메서드 존재와 서명), `private`/`protected`/`internal` 접근 범위
 - `const` 재대입, null이 될 수 있는 값의 직접 접근(`?.` 또는 null 검사 필요)
 - `yield`는 함수 안에서만 쓸 수 있고, 값 타입은 함수 반환 타입의 원소 타입과
   일치해야 합니다. 제너레이터가 아닌 함수에서는 값 없는 `return;`만 허용됩니다.

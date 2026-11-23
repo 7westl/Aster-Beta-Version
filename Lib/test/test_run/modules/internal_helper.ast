@@ -1,0 +1,17 @@
+export class Vault {
+    internal int secret = 7;
+
+    public fn bump() -> int {
+        self->secret += 1;
+        return self->secret;
+    }
+}
+
+export fn makeVault() -> Vault* {
+    return new Vault();
+}
+
+export fn peekInside() -> int {
+    var v = new Vault();
+    return v->secret;
+}

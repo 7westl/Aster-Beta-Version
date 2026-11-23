@@ -26,6 +26,7 @@ endif
 BIN = aster$(EXE)
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
+LIBDIR ?= $(PREFIX)/lib/aster
 
 SRCS = Programs/aster.c \
        Programs/pkg.c \
@@ -97,11 +98,21 @@ regen:
 	$(PYTHON) Parser/asdl_c.py Parser/Aster.asdl -H Include/internal/ast.h -C Python/Aster-ast.c
 
 install: $(BIN)
-	mkdir -p "$(DESTDIR)$(BINDIR)"
+	mkdir -p "$(DESTDIR)$(BINDIR)" "$(DESTDIR)$(LIBDIR)/Lib"
 	cp $(BIN) "$(DESTDIR)$(BINDIR)/aster$(EXE)"
-	@echo "Install Complete: $(DESTDIR)$(BINDIR)/aster$(EXE)  (Add $(BINDIR) in PATH.)"
+	cp -R Lib/aster "$(DESTDIR)$(LIBDIR)/Lib/"
+	@echo "Install Complete:"
+	@echo "  $(DESTDIR)$(BINDIR)/aster$(EXE)"
+	@echo "  $(DESTDIR)$(LIBDIR)/Lib/aster"
+	@echo "Add $(BINDIR) to PATH. The binary finds its standard library relative to itself."
+
+uninstall:
+	rm -f "$(DESTDIR)$(BINDIR)/aster$(EXE)"
+	rm -rf "$(DESTDIR)$(LIBDIR)/Lib/aster"
+	-rmdir "$(DESTDIR)$(LIBDIR)/Lib" "$(DESTDIR)$(LIBDIR)"
+	@echo "Uninstall Complete."
 
 clean:
 	rm -f aster aster.exe
 
-.PHONY: check check-v check-java regen clean install
+.PHONY: check check-v check-java regen clean install uninstall

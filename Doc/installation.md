@@ -5,10 +5,11 @@ Aster는 C11로 구현된 정적 타입 프로그래밍 언어입니다. 이 문
 안내하고, 마지막에 **새 키워드와 새 내장/표준 라이브러리를 추가하는 방법**을
 정리합니다.
 
-- 언어 문법: [Doc/language.md](Doc/language.md)
-- 표준 라이브러리: [Doc/stdlib.md](Doc/stdlib.md)
-- 패키지 관리자: [Doc/packages.md](Doc/packages.md)
-- 확장 안내(상세): [Doc/extending.md](Doc/extending.md)
+- 언어 문법: [language.md](language.md)
+- 표준 라이브러리: [stdlib.md](stdlib.md)
+- 패키지 관리자: [packages.md](packages.md)
+- 확장 안내(상세): [extending.md](extending.md)
+- 프로젝트 상태와 호환성 정책: [status.md](status.md)
 
 ## 목차
 
@@ -140,7 +141,7 @@ GitHub 저장소 페이지에서 **Code → Download ZIP**으로 받아 압축�
 `git`이 있다면 저장소를 복제합니다. 그다음 프로젝트 폴더로 이동합니다.
 
 ```sh
-cd Aster-Alpha-Version
+cd Aster
 ```
 
 폴더 안에 `Makefile`, `Parser/`, `Python/`, `Lib/`가 있으면 올바른 위치입니다.
@@ -221,7 +222,7 @@ REPL 명령은 `:help`와 `:quit`입니다.
 | `--lint`     | 사용하지 않는 변수 등을 경고합니다.               |
 | `--debug`    | 문장 단위로 멈춰 가며 실행합니다.                 |
 
-자세한 내용은 [Doc/language.md](Doc/language.md) 1절을 봅니다.
+자세한 내용은 [language.md](language.md) 1절을 봅니다.
 
 ## 5. 검증
 
@@ -323,32 +324,38 @@ Python은 `make check`와 `make regen`에서만 쓰입니다. 실행 파일을 �
 make install
 ```
 
-기본 설치 경로는 `~/.local/bin/aster`입니다. 다른 곳에 설치하려면 `PREFIX`를
-지정합니다.
+기본 설치 경로는 실행 파일이 `~/.local/bin/aster`, 표준 라이브러리가
+`~/.local/lib/aster/Lib`입니다. 다른 곳에 설치하려면 `PREFIX`를 지정합니다.
 
 ```sh
 make install PREFIX=/usr/local
 ```
 
-설치 후 `PATH`에 설치 디렉터리를 추가합니다.
+설치 후 `PATH`에 실행 파일 디렉터리를 추가합니다.
 
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Windows(MSYS2)에서도 같은 명령을 쓰며, 실행 파일 이름은 `aster.exe`가 됩니다.
+설치를 되돌리려면 `make uninstall`을 같은 `PREFIX`로 실행합니다.
 
 ### 표준 라이브러리 위치
 
-실행 파일은 다음 순서로 표준 라이브러리를 찾습니다.
+실행 파일은 다음 순서로 표준 라이브러리(`Lib`)를 찾습니다.
 
 1. 환경 변수 `ASTER_HOME`이 가리키는 디렉터리의 `Lib`
-2. 현재 작업 디렉터리의 `Lib`
+2. 실행 파일이 있는 디렉터리의 `Lib` (포터블 배치)
+3. 실행 파일 상위 디렉터리의 `lib/aster/Lib` (`make install` 기본 배치)
+4. 현재 작업 디렉터리의 `Lib` (소스 트리에서 실행)
 
-저장소 밖으로 실행 파일만 복사했다면 `ASTER_HOME`을 저장소 루트로 지정합니다.
+`make install`은 실행 파일 옆이 아니라 `<PREFIX>/lib/aster/Lib`에 표준
+라이브러리를 복사하므로, 설치 후에는 `ASTER_HOME` 없이도 동작합니다. 실행
+파일만 다른 곳으로 복사했다면 `ASTER_HOME`을 표준 라이브러리가 있는 저장소
+루트로 지정합니다.
 
 ```sh
-export ASTER_HOME=/path/to/Aster-Alpha-Version
+export ASTER_HOME=/path/to/Aster
 ```
 
 ## 7. 문제 해결
@@ -407,10 +414,11 @@ Windows에서는 실행 파일 이름이 `aster.exe`입니다.
 
 ### `cannot find module` 또는 표준 라이브러리 오류
 
-실행 파일만 다른 곳으로 복사했다면 `ASTER_HOME`을 저장소 루트로 지정합니다.
+실행 파일만 다른 곳으로 복사했다면 `ASTER_HOME`을 표준 라이브러리가 있는
+저장소 루트로 지정합니다.
 
 ```sh
-export ASTER_HOME=/path/to/Aster-Alpha-Version
+export ASTER_HOME=/path/to/Aster
 ```
 
 ### Windows에서 `cmd`/PowerShell로 빌드가 안 됨

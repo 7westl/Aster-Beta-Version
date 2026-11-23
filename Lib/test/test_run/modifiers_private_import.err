@@ -1,0 +1,4 @@
+module 'modifiers_lib' has no member 'Hidden'
+module 'modifiers_lib' has no member 'module_only'
+module 'modifiers_lib' has no member 'file_local'
+module 'modifiers_lib' has no member 'plain_but_not_exported'

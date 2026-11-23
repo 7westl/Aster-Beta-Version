@@ -20,7 +20,7 @@ mod_ty _Aster_Module(asdl_seq *package, asdl_seq *body, Arena *arena) {
     return p;
 }
 
-stmt_ty _Aster_FunctionDef(identifier name, asdl_seq *type_params, asdl_seq *params, ret_ty returns, asdl_seq *body, int is_extern, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
+stmt_ty _Aster_FunctionDef(identifier name, asdl_seq *type_params, asdl_seq *params, ret_ty returns, asdl_seq *body, int is_extern, access_ty access, int is_static, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
     stmt_ty p;
     if (!name) missing("name", "FunctionDef");
     if (!type_params) missing("type_params", "FunctionDef");
@@ -35,6 +35,8 @@ stmt_ty _Aster_FunctionDef(identifier name, asdl_seq *type_params, asdl_seq *par
     p->v.FunctionDef.returns = returns;
     p->v.FunctionDef.body = body;
     p->v.FunctionDef.is_extern = is_extern;
+    p->v.FunctionDef.access = access;
+    p->v.FunctionDef.is_static = is_static;
     p->lineno = lineno;
     p->col_offset = col_offset;
     p->end_lineno = end_lineno;
@@ -42,7 +44,7 @@ stmt_ty _Aster_FunctionDef(identifier name, asdl_seq *type_params, asdl_seq *par
     return p;
 }
 
-stmt_ty _Aster_ClassDef(identifier name, asdl_seq *type_params, typeref_ty base, asdl_seq *interfaces, asdl_seq *members, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
+stmt_ty _Aster_ClassDef(identifier name, asdl_seq *type_params, typeref_ty base, asdl_seq *interfaces, asdl_seq *members, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
     stmt_ty p;
     if (!name) missing("name", "ClassDef");
     if (!type_params) missing("type_params", "ClassDef");
@@ -55,6 +57,7 @@ stmt_ty _Aster_ClassDef(identifier name, asdl_seq *type_params, typeref_ty base,
     p->v.ClassDef.base = base;
     p->v.ClassDef.interfaces = interfaces;
     p->v.ClassDef.members = members;
+    p->v.ClassDef.access = access;
     p->lineno = lineno;
     p->col_offset = col_offset;
     p->end_lineno = end_lineno;
@@ -62,7 +65,7 @@ stmt_ty _Aster_ClassDef(identifier name, asdl_seq *type_params, typeref_ty base,
     return p;
 }
 
-stmt_ty _Aster_InterfaceDef(identifier name, asdl_seq *type_params, asdl_seq *methods, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
+stmt_ty _Aster_InterfaceDef(identifier name, asdl_seq *type_params, asdl_seq *methods, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
     stmt_ty p;
     if (!name) missing("name", "InterfaceDef");
     if (!type_params) missing("type_params", "InterfaceDef");
@@ -72,6 +75,7 @@ stmt_ty _Aster_InterfaceDef(identifier name, asdl_seq *type_params, asdl_seq *me
     p->v.InterfaceDef.name = name;
     p->v.InterfaceDef.type_params = type_params;
     p->v.InterfaceDef.methods = methods;
+    p->v.InterfaceDef.access = access;
     p->lineno = lineno;
     p->col_offset = col_offset;
     p->end_lineno = end_lineno;
@@ -79,7 +83,7 @@ stmt_ty _Aster_InterfaceDef(identifier name, asdl_seq *type_params, asdl_seq *me
     return p;
 }
 
-stmt_ty _Aster_StructDef(identifier tag, identifier alias, asdl_seq *members, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
+stmt_ty _Aster_StructDef(identifier tag, identifier alias, asdl_seq *members, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
     stmt_ty p;
     if (!tag) missing("tag", "StructDef");
     if (!members) missing("members", "StructDef");
@@ -88,6 +92,7 @@ stmt_ty _Aster_StructDef(identifier tag, identifier alias, asdl_seq *members, in
     p->v.StructDef.tag = tag;
     p->v.StructDef.alias = alias;
     p->v.StructDef.members = members;
+    p->v.StructDef.access = access;
     p->lineno = lineno;
     p->col_offset = col_offset;
     p->end_lineno = end_lineno;
@@ -95,7 +100,7 @@ stmt_ty _Aster_StructDef(identifier tag, identifier alias, asdl_seq *members, in
     return p;
 }
 
-stmt_ty _Aster_VarDecl(typeref_ty ty, identifier name, initializer_ty init, int is_const, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
+stmt_ty _Aster_VarDecl(typeref_ty ty, identifier name, initializer_ty init, int is_const, int is_readonly, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
     stmt_ty p;
     if (!ty) missing("ty", "VarDecl");
     if (!name) missing("name", "VarDecl");
@@ -106,6 +111,8 @@ stmt_ty _Aster_VarDecl(typeref_ty ty, identifier name, initializer_ty init, int 
     p->v.VarDecl.name = name;
     p->v.VarDecl.init = init;
     p->v.VarDecl.is_const = is_const;
+    p->v.VarDecl.is_readonly = is_readonly;
+    p->v.VarDecl.access = access;
     p->lineno = lineno;
     p->col_offset = col_offset;
     p->end_lineno = end_lineno;
@@ -113,7 +120,7 @@ stmt_ty _Aster_VarDecl(typeref_ty ty, identifier name, initializer_ty init, int 
     return p;
 }
 
-stmt_ty _Aster_EnumDef(identifier name, asdl_seq *members, asdl_seq *methods, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
+stmt_ty _Aster_EnumDef(identifier name, asdl_seq *members, asdl_seq *methods, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
     stmt_ty p;
     if (!name) missing("name", "EnumDef");
     if (!members) missing("members", "EnumDef");
@@ -123,6 +130,7 @@ stmt_ty _Aster_EnumDef(identifier name, asdl_seq *members, asdl_seq *methods, in
     p->v.EnumDef.name = name;
     p->v.EnumDef.members = members;
     p->v.EnumDef.methods = methods;
+    p->v.EnumDef.access = access;
     p->lineno = lineno;
     p->col_offset = col_offset;
     p->end_lineno = end_lineno;
@@ -400,13 +408,14 @@ stmt_ty _Aster_Export(stmt_ty body, int lineno, int col_offset, int end_lineno, 
     return p;
 }
 
-stmt_ty _Aster_ExceptionDef(identifier name, identifier base, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
+stmt_ty _Aster_ExceptionDef(identifier name, identifier base, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
     stmt_ty p;
     if (!name) missing("name", "ExceptionDef");
     p = Arena_Alloc(arena, sizeof(*p));
     p->kind = ExceptionDef_kind;
     p->v.ExceptionDef.name = name;
     p->v.ExceptionDef.base = base;
+    p->v.ExceptionDef.access = access;
     p->lineno = lineno;
     p->col_offset = col_offset;
     p->end_lineno = end_lineno;
@@ -1273,7 +1282,7 @@ designation_ty _Aster_designation(identifier field, expr_ty value, Arena *arena)
     return p;
 }
 
-member_ty _Aster_Field(access_ty access, typeref_ty ty, identifier name, expr_ty value, int is_static, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
+member_ty _Aster_Field(access_ty access, typeref_ty ty, identifier name, expr_ty value, int is_static, int is_const, int is_readonly, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
     member_ty p;
     if (!ty) missing("ty", "Field");
     if (!name) missing("name", "Field");
@@ -1284,6 +1293,8 @@ member_ty _Aster_Field(access_ty access, typeref_ty ty, identifier name, expr_ty
     p->v.Field.name = name;
     p->v.Field.value = value;
     p->v.Field.is_static = is_static;
+    p->v.Field.is_const = is_const;
+    p->v.Field.is_readonly = is_readonly;
     p->lineno = lineno;
     p->col_offset = col_offset;
     p->end_lineno = end_lineno;
@@ -1514,6 +1525,10 @@ static void dump_stmt(FILE *out, stmt_ty n) {
         dump_seq(out, n->v.FunctionDef.body, dumpv_stmt);
         fputs(", is_extern=", out);
         dump_int(out, n->v.FunctionDef.is_extern);
+        fputs(", access=", out);
+        dump_access(out, n->v.FunctionDef.access);
+        fputs(", is_static=", out);
+        dump_int(out, n->v.FunctionDef.is_static);
         fputc(')', out);
         break;
     case ClassDef_kind:
@@ -1528,6 +1543,8 @@ static void dump_stmt(FILE *out, stmt_ty n) {
         dump_seq(out, n->v.ClassDef.interfaces, dumpv_typeref);
         fputs(", members=", out);
         dump_seq(out, n->v.ClassDef.members, dumpv_member);
+        fputs(", access=", out);
+        dump_access(out, n->v.ClassDef.access);
         fputc(')', out);
         break;
     case InterfaceDef_kind:
@@ -1538,6 +1555,8 @@ static void dump_stmt(FILE *out, stmt_ty n) {
         dump_seq(out, n->v.InterfaceDef.type_params, dumpv_type_param);
         fputs(", methods=", out);
         dump_seq(out, n->v.InterfaceDef.methods, dumpv_signature);
+        fputs(", access=", out);
+        dump_access(out, n->v.InterfaceDef.access);
         fputc(')', out);
         break;
     case StructDef_kind:
@@ -1548,6 +1567,8 @@ static void dump_stmt(FILE *out, stmt_ty n) {
         dump_identifier(out, n->v.StructDef.alias);
         fputs(", members=", out);
         dump_seq(out, n->v.StructDef.members, dumpv_struct_member);
+        fputs(", access=", out);
+        dump_access(out, n->v.StructDef.access);
         fputc(')', out);
         break;
     case VarDecl_kind:
@@ -1560,6 +1581,10 @@ static void dump_stmt(FILE *out, stmt_ty n) {
         dump_initializer(out, n->v.VarDecl.init);
         fputs(", is_const=", out);
         dump_int(out, n->v.VarDecl.is_const);
+        fputs(", is_readonly=", out);
+        dump_int(out, n->v.VarDecl.is_readonly);
+        fputs(", access=", out);
+        dump_access(out, n->v.VarDecl.access);
         fputc(')', out);
         break;
     case EnumDef_kind:
@@ -1570,6 +1595,8 @@ static void dump_stmt(FILE *out, stmt_ty n) {
         dump_seq(out, n->v.EnumDef.members, dumpv_enum_member);
         fputs(", methods=", out);
         dump_seq(out, n->v.EnumDef.methods, dumpv_member);
+        fputs(", access=", out);
+        dump_access(out, n->v.EnumDef.access);
         fputc(')', out);
         break;
     case Destructure_kind:
@@ -1726,6 +1753,8 @@ static void dump_stmt(FILE *out, stmt_ty n) {
         dump_identifier(out, n->v.ExceptionDef.name);
         fputs(", base=", out);
         dump_identifier(out, n->v.ExceptionDef.base);
+        fputs(", access=", out);
+        dump_access(out, n->v.ExceptionDef.access);
         fputc(')', out);
         break;
     case ExprStmt_kind:
@@ -2356,6 +2385,10 @@ static void dump_member(FILE *out, member_ty n) {
         dump_expr(out, n->v.Field.value);
         fputs(", is_static=", out);
         dump_int(out, n->v.Field.is_static);
+        fputs(", is_const=", out);
+        dump_int(out, n->v.Field.is_const);
+        fputs(", is_readonly=", out);
+        dump_int(out, n->v.Field.is_readonly);
         fputc(')', out);
         break;
     case Method_kind:

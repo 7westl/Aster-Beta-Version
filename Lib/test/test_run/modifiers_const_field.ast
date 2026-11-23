@@ -1,0 +1,10 @@
+class Box {
+    const int value = 1;
+    constructor() {}
+    fn reset() -> void {
+        self->value = 0;
+    }
+}
+
+Box b = new Box();
+b.reset();

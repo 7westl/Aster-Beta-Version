@@ -2217,7 +2217,9 @@ static int p_function_signature(Parser *p, asdl_seq **params_out, ret_ty *ret_ou
 /* ---------------------------------------------------------------- 문장 */
 
 static stmt_ty p_statement(Parser *p);
-static stmt_ty p_var_decl_core(Parser *p, int is_const);
+static access_ty p_access_modifier(Parser *p);
+static stmt_ty p_var_decl_core(Parser *p, int is_const, int is_readonly,
+                               access_ty access);
 static stmt_ty p_assign_core(Parser *p);
 static member_ty p_method_def(Parser *p);
 
@@ -2566,7 +2568,8 @@ static initializer_ty p_initializer(Parser *p, int allow_brace) {
     return _Aster_ExprInit(value, p->arena);
 }
 
-static stmt_ty p_var_decl_core(Parser *p, int is_const) {
+static stmt_ty p_var_decl_core(Parser *p, int is_const, int is_readonly,
+                               access_ty access) {
     size_t start = p->pos;
     typeref_ty ty = p_type(p);
     identifier name;
@@ -2615,20 +2618,25 @@ static stmt_ty p_var_decl_core(Parser *p, int is_const) {
     if (accept(p, "=")) {
         initializer_ty init = p_initializer(p, type_is_struct(p, ty));
         if (init)
-            return _Aster_VarDecl(ty, name, init, is_const, ATTRS(p, start), p->arena);
+            return _Aster_VarDecl(ty, name, init, is_const, is_readonly, access,
+                                  ATTRS(p, start), p->arena);
         p->pos = after_name;
     }
-    return _Aster_VarDecl(ty, name, _Aster_NoInit(p->arena), is_const,
-                          ATTRS(p, start), p->arena);
+    return _Aster_VarDecl(ty, name, _Aster_NoInit(p->arena), is_const, is_readonly,
+                          access, ATTRS(p, start), p->arena);
 }
 
 static stmt_ty p_var_decl(Parser *p) {
     size_t start = p->pos;
+    access_ty access = p_access_modifier(p);
     int is_const = 0;
+    int is_readonly = 0;
     stmt_ty core;
     if (accept(p, "const"))
         is_const = 1;
-    core = p_var_decl_core(p, is_const);
+    else if (accept(p, "readonly"))
+        is_readonly = 1;
+    core = p_var_decl_core(p, is_const, is_readonly, access);
     if (!core || !accept(p, ";")) {
         p->pos = start;
         return NULL;
@@ -2636,7 +2644,8 @@ static stmt_ty p_var_decl(Parser *p) {
     if (core->kind == Destructure_kind)
         return core;
     return _Aster_VarDecl(core->v.VarDecl.ty, core->v.VarDecl.name,
-                          core->v.VarDecl.init, is_const, ATTRS(p, start), p->arena);
+                          core->v.VarDecl.init, is_const, is_readonly, access,
+                          ATTRS(p, start), p->arena);
 }
 
 static int p_assign_op(Parser *p) {
@@ -2805,7 +2814,8 @@ static stmt_ty p_enum_def(Parser *p) {
     }
     (void)accept(p, ";");
     return _Aster_EnumDef(name, seq_make(&members, p->arena),
-                          seq_make(&methods, p->arena), ATTRS(p, start), p->arena);
+                          seq_make(&methods, p->arena), (access_ty)0,
+                          ATTRS(p, start), p->arena);
 }
 
 static stmt_ty p_assert_stmt(Parser *p) {
@@ -2867,7 +2877,7 @@ static stmt_ty p_function_def(Parser *p) {
         return NULL;
     }
     return _Aster_FunctionDef(name, type_params, params, returns, body, 0,
-                              ATTRS(p, start), p->arena);
+                              (access_ty)0, 0, ATTRS(p, start), p->arena);
 }
 
 /* extern fn name(params) -> T;  — 본문 없이 선언만 한다. */
@@ -2900,7 +2910,7 @@ static stmt_ty p_extern_def(Parser *p) {
     }
     pop_type_params(p);
     return _Aster_FunctionDef(name, type_params, params, returns, empty_seq(p), 1,
-                              ATTRS(p, start), p->arena);
+                              (access_ty)0, 0, ATTRS(p, start), p->arena);
 }
 
 /* --------------------------------------------------------------- 클래스 */
@@ -2921,9 +2931,16 @@ static member_ty p_field_decl(Parser *p) {
     size_t start = p->pos;
     access_ty access = p_access_modifier(p);
     int is_static = accept(p, "static");
-    typeref_ty ty = p_type(p);
+    int is_const = 0;
+    int is_readonly = 0;
+    typeref_ty ty;
     identifier name;
     expr_ty value = NULL;
+    if (accept(p, "const"))
+        is_const = 1;
+    else if (accept(p, "readonly"))
+        is_readonly = 1;
+    ty = p_type(p);
     if (!ty) {
         p->pos = start;
         return NULL;
@@ -2945,7 +2962,8 @@ static member_ty p_field_decl(Parser *p) {
         p->pos = start;
         return NULL;
     }
-    return _Aster_Field(access, ty, name, value, is_static, ATTRS(p, start), p->arena);
+    return _Aster_Field(access, ty, name, value, is_static, is_const, is_readonly,
+                        ATTRS(p, start), p->arena);
 }
 
 static member_ty p_method_def(Parser *p) {
@@ -3160,7 +3178,8 @@ static stmt_ty p_class_def(Parser *p) {
     }
     pop_type_params(p);
     return _Aster_ClassDef(name, type_params, base, interfaces,
-                           seq_make(&members, p->arena), ATTRS(p, start), p->arena);
+                           seq_make(&members, p->arena), (access_ty)0,
+                           ATTRS(p, start), p->arena);
 }
 
 /* ------------------------------------------------------------- 인터페이스 */
@@ -3220,7 +3239,7 @@ static stmt_ty p_interface_def(Parser *p) {
     }
     pop_type_params(p);
     return _Aster_InterfaceDef(name, type_params, seq_make(&methods, p->arena),
-                               ATTRS(p, start), p->arena);
+                               (access_ty)0, ATTRS(p, start), p->arena);
 }
 
 /* --------------------------------------------------------------- 구조체 */
@@ -3332,7 +3351,7 @@ static stmt_ty p_exception_def(Parser *p) {
         p->pos = start;
         return NULL;
     }
-    return _Aster_ExceptionDef(name, base, ATTRS(p, start), p->arena);
+    return _Aster_ExceptionDef(name, base, (access_ty)0, ATTRS(p, start), p->arena);
 }
 
 static struct_member_ty p_struct_member(Parser *p) {
@@ -3382,7 +3401,8 @@ static stmt_ty p_struct_def(Parser *p) {
         p->pos = start;
         return NULL;
     }
-    return _Aster_StructDef(tag, NULL, members, ATTRS(p, start), p->arena);
+    return _Aster_StructDef(tag, NULL, members, (access_ty)0,
+                            ATTRS(p, start), p->arena);
 }
 
 static stmt_ty p_typedef_struct(Parser *p) {
@@ -3422,7 +3442,8 @@ static stmt_ty p_typedef_struct(Parser *p) {
         p->pos = start;
         return NULL;
     }
-    return _Aster_StructDef(tag, alias, members, ATTRS(p, start), p->arena);
+    return _Aster_StructDef(tag, alias, members, (access_ty)0,
+                            ATTRS(p, start), p->arena);
 }
 
 /* --------------------------------------------------------------- 제어문 */
@@ -3570,7 +3591,7 @@ static stmt_ty p_range_for_stmt(Parser *p) {
 }
 
 static stmt_ty p_for_init(Parser *p) {
-    stmt_ty s = p_var_decl_core(p, 0);
+    stmt_ty s = p_var_decl_core(p, 0, 0, (access_ty)0);
     if (s)
         return s;
     return p_assign_core(p);
@@ -4001,28 +4022,88 @@ static stmt_ty p_simple_stmt(Parser *p) {
     return p_expr_stmt(p);
 }
 
+/* 접근자/static은 선언 노드에 붙인다. Export로 감싼 선언은 안쪽에 적용한다. */
+static void apply_decl_mods(stmt_ty s, access_ty access, int is_static) {
+    if (!s)
+        return;
+    switch (s->kind) {
+    case Export_kind:
+        apply_decl_mods(s->v.Export.body, access, is_static);
+        return;
+    case FunctionDef_kind:
+        if (access)
+            s->v.FunctionDef.access = access;
+        if (is_static)
+            s->v.FunctionDef.is_static = 1;
+        return;
+    case ClassDef_kind:
+        if (access)
+            s->v.ClassDef.access = access;
+        return;
+    case InterfaceDef_kind:
+        if (access)
+            s->v.InterfaceDef.access = access;
+        return;
+    case StructDef_kind:
+        if (access)
+            s->v.StructDef.access = access;
+        return;
+    case EnumDef_kind:
+        if (access)
+            s->v.EnumDef.access = access;
+        return;
+    case ExceptionDef_kind:
+        if (access)
+            s->v.ExceptionDef.access = access;
+        return;
+    case VarDecl_kind:
+        if (access)
+            s->v.VarDecl.access = access;
+        return;
+    default:
+        return;
+    }
+}
+
+static stmt_ty p_decl_with_mods(Parser *p, access_ty access, int is_static) {
+    stmt_ty s;
+
+    s = p_extern_def(p);
+    if (!s)
+        s = p_function_def(p);
+    if (!s && !is_static)
+        s = p_class_def(p);
+    if (!s && !is_static)
+        s = p_interface_def(p);
+    if (!s && !is_static)
+        s = p_exception_def(p);
+    if (!s && !is_static)
+        s = p_struct_def(p);
+    if (!s && !is_static)
+        s = p_typedef_struct(p);
+    if (!s && !is_static)
+        s = p_enum_def(p);
+    if (!s && !is_static)
+        s = p_var_decl(p);
+    if (!s)
+        return NULL;
+    apply_decl_mods(s, access, is_static);
+    return s;
+}
+
 static stmt_ty p_export_decl(Parser *p) {
     size_t start = p->pos;
+    access_ty access;
+    int is_static;
     stmt_ty inner;
+
     if (!accept(p, "export")) {
         p->pos = start;
         return NULL;
     }
-    inner = p_extern_def(p);
-    if (!inner)
-        inner = p_function_def(p);
-    if (!inner)
-        inner = p_class_def(p);
-    if (!inner)
-        inner = p_interface_def(p);
-    if (!inner)
-        inner = p_exception_def(p);
-    if (!inner)
-        inner = p_struct_def(p);
-    if (!inner)
-        inner = p_typedef_struct(p);
-    if (!inner)
-        inner = p_var_decl(p);
+    access = p_access_modifier(p);
+    is_static = accept(p, "static");
+    inner = p_decl_with_mods(p, access, is_static);
     if (!inner) {
         p->pos = start;
         return NULL;
@@ -4031,7 +4112,18 @@ static stmt_ty p_export_decl(Parser *p) {
 }
 
 static stmt_ty p_compound_stmt(Parser *p) {
-    stmt_ty s = p_export_decl(p);
+    size_t start = p->pos;
+    access_ty access = p_access_modifier(p);
+    int is_static = accept(p, "static");
+    stmt_ty s;
+
+    if (access || is_static) {
+        s = p_decl_with_mods(p, access, is_static);
+        if (s)
+            return s;
+        p->pos = start;
+    }
+    s = p_export_decl(p);
     if (s)
         return s;
     s = p_extern_def(p);

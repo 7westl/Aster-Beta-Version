@@ -183,11 +183,13 @@ typedef struct {
     typeref_ty ty;
     expr_ty init;
     int is_static;
+    int is_const;
 } FieldDesc;
 
 typedef struct {
     const char *name;
     RValue *cell;
+    int is_const;
 } InstField;
 
 typedef enum { FN_USER, FN_LAMBDA, FN_BUILTIN } FnKind;
@@ -224,6 +226,8 @@ struct AstModule {
     Env *env;
     const char **exports;
     size_t nexports;
+    const char **hidden;     /* 기본 export 모드에서 제외할 이름 */
+    size_t nhidden;
     int loading;
 };
 
@@ -538,6 +542,7 @@ AstModule *Module_New(Interp *in, const char *name, const char *path);
 AstModule *Module_Builtin(Interp *in, const char *name);   /* 없으면 NULL */
 AstModule *Module_RegisterBuiltin(Interp *in, const char *name); /* C 제공 모듈 등록 */
 void Module_AddExport(AstModule *module, Interp *in, const char *name);
+void Module_HideExport(AstModule *module, Interp *in, const char *name);
 RValue *Module_GetExported(Interp *in, AstModule *module, const char *name);
 
 /* 'a.b' 모듈 파일을 찾는다. base_dir → stdlib_dir → module_dirs 순서. */

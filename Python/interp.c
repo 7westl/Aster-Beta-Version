@@ -2195,6 +2195,7 @@ static AstClass *build_class(Interp *in, stmt_ty s, Env *env) {
             cls->fields[fi].ty = m->v.Field.ty;
             cls->fields[fi].init = m->v.Field.value;
             cls->fields[fi].is_static = m->v.Field.is_static;
+            cls->fields[fi].is_const = m->v.Field.is_const;
             cls->static_values[fi] = NULL;
             fi++;
         }
@@ -2774,7 +2775,7 @@ static void predeclare_one(Interp *in, Env *env, stmt_ty s, int define_vars) {
             RValue *value = module_var_default(in, s->v.VarDecl.ty);
             if (!value)
                 value = initializer_default(in, s->v.VarDecl.init);
-            if (s->v.VarDecl.is_const)
+            if (s->v.VarDecl.is_const || s->v.VarDecl.is_readonly)
                 Env_DefineConst(in, env, s->v.VarDecl.name, value);
             else
                 Env_Define(in, env, s->v.VarDecl.name, value);
@@ -2873,7 +2874,7 @@ static Signal exec_var_decl(Interp *in, stmt_ty s, Env *env) {
         value = RValue_Float(in, (double)value->u.i);
     if (!lambda_init && !check_declared_value(in, s->v.VarDecl.ty, value))
         return in->sig;
-    if (s->v.VarDecl.is_const)
+    if (s->v.VarDecl.is_const || s->v.VarDecl.is_readonly)
         Env_DefineConst(in, env, s->v.VarDecl.name, RValue_Copy(in, value));
     else
         Env_Define(in, env, s->v.VarDecl.name, RValue_Copy(in, value));
@@ -2939,6 +2940,7 @@ typedef struct {
     RValue *container;       /* subscript 대상이면 NULL이 아니다 */
     RValue *index;
     int is_subscript;
+    int is_const;            /* const 필드 슬롯이면 1 */
 } Target;
 
 /* lvalue 체인/& 연산용: 필드를 복사하지 않고 실제 셀을 찾는다. */
@@ -2949,6 +2951,7 @@ static int attr_target(Interp *in, RValue *base, const char *name, Target *out) 
     out->container = NULL;
     out->index = NULL;
     out->is_subscript = 0;
+    out->is_const = 0;
 
     if (base && base->kind == RV_PTR)
         base = base->u.ptr.slot ? *base->u.ptr.slot : NULL;
@@ -2963,6 +2966,7 @@ static int attr_target(Interp *in, RValue *base, const char *name, Target *out) 
             for (i = 0; i < cls->nfields; i++) {
                 if (cls->fields[i].is_static && !strcmp(cls->fields[i].name, name)) {
                     out->slot = &cls->static_values[i];
+                    out->is_const = cls->fields[i].is_const;
                     return 1;
                 }
             }
@@ -2986,6 +2990,7 @@ static int attr_target(Interp *in, RValue *base, const char *name, Target *out) 
             return 0;
         }
         out->slot = &field->cell;
+        out->is_const = field->is_const;
         return 1;
     }
     if (base->kind == RV_STRUCT) {
@@ -3063,6 +3068,7 @@ static int resolve_target(Interp *in, expr_ty target, Env *env, Target *out) {
     out->container = NULL;
     out->index = NULL;
     out->is_subscript = 0;
+    out->is_const = 0;
 
     switch (target->kind) {
     case Name_kind: {
@@ -3359,6 +3365,11 @@ static Signal exec_assign(Interp *in, stmt_ty s, Env *env) {
         if (!RValue_SetItem(in, tgt.container, tgt.index, value, &ok))
             return in->sig;
         return SIG_OK;
+    }
+
+    if (tgt.is_const) {
+        RT_Throw(in, "TypeError", "cannot assign to a const field");
+        return SIG_THROW;
     }
 
     if (s->v.Assign.op != AssignEq) {
@@ -3768,6 +3779,8 @@ static const char *exported_stmt_name(stmt_ty s) {
         return s->v.InterfaceDef.name;
     case ExceptionDef_kind:
         return s->v.ExceptionDef.name;
+    case EnumDef_kind:
+        return s->v.EnumDef.name;
     case VarDecl_kind:
         return s->v.VarDecl.name;
     case Assign_kind:
@@ -3779,15 +3792,75 @@ static const char *exported_stmt_name(stmt_ty s) {
     }
 }
 
-static void collect_module_exports(Interp *in, AstModule *module, asdl_seq *body) {
+static access_ty module_stmt_access(stmt_ty s) {
+    switch (s->kind) {
+    case FunctionDef_kind:
+        return s->v.FunctionDef.access;
+    case ClassDef_kind:
+        return s->v.ClassDef.access;
+    case StructDef_kind:
+        return s->v.StructDef.access;
+    case InterfaceDef_kind:
+        return s->v.InterfaceDef.access;
+    case ExceptionDef_kind:
+        return s->v.ExceptionDef.access;
+    case EnumDef_kind:
+        return s->v.EnumDef.access;
+    case VarDecl_kind:
+        return s->v.VarDecl.access;
+    case Export_kind:
+        return module_stmt_access(s->v.Export.body);
+    default:
+        return (access_ty)0;
+    }
+}
+
+/* 모듈 수준 static 함수는 모듈 밖으로 내보내지 않는다. */
+static int module_stmt_static(stmt_ty s) {
+    if (s->kind == Export_kind)
+        return 0;
+    return s->kind == FunctionDef_kind && s->v.FunctionDef.is_static;
+}
+
+/* export 래퍼나 public 선언이 있으면 명시적 export 모드다. */
+static int module_has_explicit(asdl_seq *body) {
     size_t i;
     for (i = 0; i < asdl_seq_LEN(body); i++) {
         stmt_ty s = asdl_seq_GET(body, i);
-        if (s->kind == Export_kind) {
-            const char *name = exported_stmt_name(s->v.Export.body);
+        if (s->kind == Export_kind)
+            return 1;
+        if (module_stmt_access(s) == Public && !module_stmt_static(s))
+            return 1;
+    }
+    return 0;
+}
+
+static void collect_module_exports(Interp *in, AstModule *module, asdl_seq *body) {
+    size_t i;
+
+    if (!module_has_explicit(body)) {
+        for (i = 0; i < asdl_seq_LEN(body); i++) {
+            stmt_ty s = asdl_seq_GET(body, i);
+            access_ty a = module_stmt_access(s);
+            const char *name;
+            if (a != Private && a != Internal && !module_stmt_static(s))
+                continue;
+            name = exported_stmt_name(s);
             if (name)
-                Module_AddExport(module, in, name);
+                Module_HideExport(module, in, name);
         }
+        return;
+    }
+    for (i = 0; i < asdl_seq_LEN(body); i++) {
+        stmt_ty s = asdl_seq_GET(body, i);
+        stmt_ty decl = s->kind == Export_kind ? s->v.Export.body : s;
+        const char *name;
+        if (s->kind != Export_kind &&
+            (module_stmt_access(s) != Public || module_stmt_static(s)))
+            continue;
+        name = exported_stmt_name(decl);
+        if (name)
+            Module_AddExport(module, in, name);
     }
 }
 
@@ -3857,7 +3930,17 @@ static void import_public_names(Interp *in, Env *env, AstModule *module) {
     {
         Binding *b;
         for (b = module->env->vars; b; b = b->next) {
-            if (b->name[0] != '_' && b->cell)
+            size_t k;
+            int hidden = 0;
+            if (b->name[0] == '_' || !b->cell)
+                continue;
+            for (k = 0; k < module->nhidden; k++) {
+                if (!strcmp(module->hidden[k], b->name)) {
+                    hidden = 1;
+                    break;
+                }
+            }
+            if (!hidden)
                 Env_Define(in, env, b->name, RValue_Copy(in, b->cell));
         }
     }
@@ -4808,6 +4891,8 @@ static RValue *eval(Interp *in, expr_ty e, Env *env) {
         int ok = 1;
         if (!resolve_target(in, e->v.Incr.target, env, &tgt))
             return NULL;
+        if (tgt.is_const)
+            return RT_ThrowValue(in, "TypeError", "cannot assign to a const field");
         if (tgt.prop)
             current = property_read(in, tgt.prop, tgt.self);
         else if (tgt.is_subscript)

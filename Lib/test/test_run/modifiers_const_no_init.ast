@@ -1,0 +1,5 @@
+class Box {
+    const int value;
+}
+
+Box b = new Box();

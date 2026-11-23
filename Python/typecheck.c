@@ -95,6 +95,9 @@ struct Member {
     Ty *ty;                  /* 필드/프로퍼티 타입 */
     Ty *fn;                  /* 메서드면 함수 타입 */
     int is_method;
+    int is_const;            /* const 필드: 재대입 금지 */
+    int is_readonly;         /* readonly 필드: 생성자에서만 대입 허용 */
+    int is_static;
     access_ty access;
     Member *next;
 };
@@ -102,6 +105,7 @@ struct Member {
 struct ClassInfo {
     const char *name;
     const char *base_name;
+    const char *module_file; /* 선언된 모듈 파일. internal 접근 검사에 쓴다. */
     ClassInfo *base;
     Member *members;
     Ty *ctor;
@@ -153,6 +157,7 @@ struct Checker {
     int current_ret_known;
     int in_function;
     int in_generator;
+    int in_constructor;
     int loop_depth;
     int allow_unknown;
     int last_error_line;
@@ -1331,6 +1336,7 @@ static void pop_tparams(Checker *c, TParamSave *save) {
 /* ------------------------------------------------------------------ 표현식 */
 
 static Ty *infer(Checker *c, expr_ty e);
+static void check_field_assignment(Checker *c, expr_ty target, Ty *base);
 static void narrow_true(Checker *c, expr_ty e);
 static void narrow_false(Checker *c, expr_ty e);
 
@@ -1404,6 +1410,7 @@ static void resolve_bases(Checker *c);
 static void init_builtins(Checker *c);
 static void check_interfaces(Checker *c);
 static void preload_imports(Checker *c, asdl_seq *body);
+static void check_module_visibility(Checker *c, asdl_seq *body);
 
 static void pending_push(Checker *root, Checker *mc, ModuleInfo *mi,
                          asdl_seq *body) {
@@ -1428,6 +1435,7 @@ static void flush_pending(Checker *c) {
         Checker *mc = pm->checker;
         resolve_bases(mc);
         check_interfaces(mc);
+        check_module_visibility(mc, pm->body);
         check_body(mc, pm->body);
         c->errors += mc->errors;
         c->modules = mc->modules;
@@ -1542,6 +1550,8 @@ static const char *exported_name(stmt_ty s) {
         return s->v.InterfaceDef.name;
     case ExceptionDef_kind:
         return s->v.ExceptionDef.name;
+    case EnumDef_kind:
+        return s->v.EnumDef.name;
     case VarDecl_kind:
         return s->v.VarDecl.name;
     case Assign_kind:
@@ -1551,6 +1561,44 @@ static const char *exported_name(stmt_ty s) {
     default:
         return NULL;
     }
+}
+
+/* 최상위 선언에 붙은 접근자. Export 래퍼는 안쪽 선언의 접근자를 본다. */
+static access_ty stmt_access(stmt_ty s) {
+    switch (s->kind) {
+    case FunctionDef_kind:
+        return s->v.FunctionDef.access;
+    case ClassDef_kind:
+        return s->v.ClassDef.access;
+    case StructDef_kind:
+        return s->v.StructDef.access;
+    case InterfaceDef_kind:
+        return s->v.InterfaceDef.access;
+    case ExceptionDef_kind:
+        return s->v.ExceptionDef.access;
+    case EnumDef_kind:
+        return s->v.EnumDef.access;
+    case VarDecl_kind:
+        return s->v.VarDecl.access;
+    case Export_kind:
+        return stmt_access(s->v.Export.body);
+    default:
+        return (access_ty)0;
+    }
+}
+
+/* 모듈 수준 static 함수는 C의 internal linkage처럼 모듈 밖으로 내보내지 않는다. */
+static int stmt_module_static(stmt_ty s) {
+    if (s->kind == Export_kind)
+        return 0;                /* export는 명시적 공개 선언이다. */
+    return s->kind == FunctionDef_kind && s->v.FunctionDef.is_static;
+}
+
+static int stmt_hidden_default(stmt_ty s) {
+    access_ty a = stmt_access(s);
+    if (a == Private || a == Internal)
+        return 1;
+    return stmt_module_static(s);
 }
 
 static void module_add_export(Checker *c, ModuleInfo *mi, const char *name) {
@@ -1571,10 +1619,14 @@ static void module_add_export(Checker *c, ModuleInfo *mi, const char *name) {
     mi->nexports++;
 }
 
-static int has_export_wrappers(asdl_seq *body) {
+/* export 래퍼가 있거나 public 선언이 있으면 명시적 export 모드다. */
+static int has_explicit_visibility(asdl_seq *body) {
     size_t i;
     for (i = 0; i < asdl_seq_LEN(body); i++) {
-        if (((stmt_ty)asdl_seq_GET(body, i))->kind == Export_kind)
+        stmt_ty s = asdl_seq_GET(body, i);
+        if (s->kind == Export_kind)
+            return 1;
+        if (stmt_access(s) == Public && !stmt_module_static(s))
             return 1;
     }
     return 0;
@@ -1583,24 +1635,49 @@ static int has_export_wrappers(asdl_seq *body) {
 static void snapshot_exports(Checker *c, ModuleInfo *mi, asdl_seq *body) {
     size_t i;
 
-    if (has_export_wrappers(body)) {
+    if (has_explicit_visibility(body)) {
         mi->has_explicit_exports = 1;
         for (i = 0; i < asdl_seq_LEN(body); i++) {
             stmt_ty s = asdl_seq_GET(body, i);
-            if (s->kind == Export_kind) {
-                const char *name = exported_name(s->v.Export.body);
-                if (name)
-                    module_add_export(c, mi, name);
-            }
+            stmt_ty decl = s->kind == Export_kind ? s->v.Export.body : s;
+            const char *name;
+            if (s->kind != Export_kind &&
+                (stmt_access(s) != Public || stmt_module_static(s)))
+                continue;
+            name = exported_name(decl);
+            if (name)
+                module_add_export(c, mi, name);
         }
         return;
     }
     {
         Sym *s;
         for (s = c->scope->syms; s; s = s->next) {
-            if (s->name[0] != '_')
+            size_t k;
+            int hidden = 0;
+            if (s->name[0] == '_')
+                continue;
+            for (k = 0; k < asdl_seq_LEN(body) && !hidden; k++) {
+                stmt_ty d = asdl_seq_GET(body, k);
+                const char *dn = exported_name(d);
+                if (dn && !strcmp(dn, s->name) && stmt_hidden_default(d))
+                    hidden = 1;
+            }
+            if (!hidden)
                 module_add_export(c, mi, s->name);
         }
+    }
+}
+
+/* 모듈 수준에서는 protected가 의미가 없다. 클래스 멤버에만 허용한다. */
+static void check_module_visibility(Checker *c, asdl_seq *body) {
+    size_t i;
+    for (i = 0; i < asdl_seq_LEN(body); i++) {
+        stmt_ty s = asdl_seq_GET(body, i);
+        stmt_ty decl = s->kind == Export_kind ? s->v.Export.body : s;
+        if (stmt_access(decl) == Protected)
+            check_error(c, decl->lineno, decl->col_offset,
+                        "protected is only allowed on class members");
     }
 }
 
@@ -1611,6 +1688,7 @@ static void preregister_stmt(Checker *c, stmt_ty s) {
             ClassInfo *ci = Arena_Alloc(c->arena, sizeof(ClassInfo));
             memset(ci, 0, sizeof(*ci));
             ci->name = s->v.ClassDef.name;
+            ci->module_file = c->filename;
             ci->line = s->lineno;
             ci->col = s->col_offset;
             ci->next = c->classes;
@@ -1622,6 +1700,7 @@ static void preregister_stmt(Checker *c, stmt_ty s) {
             ClassInfo *ci = Arena_Alloc(c->arena, sizeof(ClassInfo));
             memset(ci, 0, sizeof(*ci));
             ci->name = s->v.InterfaceDef.name;
+            ci->module_file = c->filename;
             ci->is_interface = 1;
             ci->line = s->lineno;
             ci->col = s->col_offset;
@@ -1634,6 +1713,7 @@ static void preregister_stmt(Checker *c, stmt_ty s) {
             ClassInfo *ci = Arena_Alloc(c->arena, sizeof(ClassInfo));
             memset(ci, 0, sizeof(*ci));
             ci->name = s->v.ExceptionDef.name;
+            ci->module_file = c->filename;
             ci->base_name = s->v.ExceptionDef.base ? s->v.ExceptionDef.base : "Exception";
             ci->is_exception = 1;
             ci->line = s->lineno;
@@ -2090,6 +2170,13 @@ static Ty *attr_type(Checker *c, expr_ty e, Ty *base) {
                         check_error(c, e->lineno, e->col_offset,
                                     "'%s' member '%s' is protected and cannot be used outside '%s' and its subclasses",
                                     owner_name, name, owner_name);
+                }
+                else if (m->access == Internal) {
+                    if (owner && owner->module_file && c->filename &&
+                        strcmp(owner->module_file, c->filename))
+                        check_error(c, e->lineno, e->col_offset,
+                                    "'%s' member '%s' is internal and cannot be used outside its module",
+                                    owner_name, name);
                 }
                 {
                     Ty *mt = m->is_method ? m->fn : m->ty;
@@ -2959,8 +3046,23 @@ static Ty *infer(Checker *c, expr_ty e) {
         pop_scope(c);
         return ty_dict(c, key, value);
     }
-    case Incr_kind:
-        return infer(c, e->v.Incr.target);
+    case Incr_kind: {
+        expr_ty t = e->v.Incr.target;
+        if (t->kind == Name_kind) {
+            Sym *s = lookup_sym(c, t->v.Name.id, 1);
+            if (s && s->is_const)
+                check_error(c, t->lineno, t->col_offset,
+                            "cannot assign to const variable '%s'", t->v.Name.id);
+        }
+        else if (t->kind == Attribute_kind || t->kind == PtrAttribute_kind) {
+            Ty *base = infer(c, t->kind == Attribute_kind
+                                   ? t->v.Attribute.value
+                                   : t->v.PtrAttribute.value);
+            if (!(base && base->kind == TY_MODULE))
+                check_field_assignment(c, t, base);
+        }
+        return infer(c, t);
+    }
     }
     return ty_any(c);
 }
@@ -2994,6 +3096,17 @@ static void class_add_member(Checker *c, ClassInfo *ci, const char *name, Ty *ty
     ci->members = m;
 }
 
+/* 필드의 const/readonly/static 정보를 멤버에 기록한다. */
+static void class_mark_field(ClassInfo *ci, const char *name, int is_const,
+                             int is_readonly, int is_static) {
+    Member *m = class_member(ci, name);
+    if (!m)
+        return;
+    m->is_const = is_const;
+    m->is_readonly = is_readonly;
+    m->is_static = is_static;
+}
+
 static void collect_class(Checker *c, stmt_ty s) {
     ClassInfo *ci = find_class(c, s->v.ClassDef.name);
     size_t i, n = asdl_seq_LEN(s->v.ClassDef.members);
@@ -3008,6 +3121,8 @@ static void collect_class(Checker *c, stmt_ty s) {
         ci->next = c->classes;
         c->classes = ci;
     }
+    if (!ci->module_file)
+        ci->module_file = c->filename;
     if (s->v.ClassDef.base && s->v.ClassDef.base->kind == Named_kind)
         ci->base_name = s->v.ClassDef.base->v.Named.name;
     ci->ninterfaces = asdl_seq_LEN(s->v.ClassDef.interfaces);
@@ -3031,6 +3146,8 @@ static void collect_class(Checker *c, stmt_ty s) {
         case Field_kind:
             class_add_member(c, ci, m->v.Field.name, typeref_to_ty(c, m->v.Field.ty),
                              NULL, 0, m->v.Field.access);
+            class_mark_field(ci, m->v.Field.name, m->v.Field.is_const,
+                             m->v.Field.is_readonly, m->v.Field.is_static);
             break;
         case Property_kind:
             class_add_member(c, ci, m->v.Property.name, typeref_to_ty(c, m->v.Property.ty),
@@ -3079,6 +3196,8 @@ static void collect_interface(Checker *c, stmt_ty s) {
         ci->next = c->classes;
         c->classes = ci;
     }
+    if (!ci->module_file)
+        ci->module_file = c->filename;
     ci->ntparams = asdl_seq_LEN(s->v.InterfaceDef.type_params);
     push_tparams(c, s->v.InterfaceDef.type_params, &save);
     ci->tparams = c->tparams;
@@ -3305,7 +3424,8 @@ static void collect_stmt(Checker *c, stmt_ty s) {
         if (ty->kind == TY_ANY && s->v.VarDecl.init &&
             s->v.VarDecl.init->kind == ExprInit_kind)
             ty = shallow_type(c, s->v.VarDecl.init->v.ExprInit.value);
-        define_shadow_const(c, s->v.VarDecl.name, ty, s->v.VarDecl.is_const);
+        define_shadow_const(c, s->v.VarDecl.name, ty,
+                            s->v.VarDecl.is_const || s->v.VarDecl.is_readonly);
         break;
     }
     case Assign_kind:
@@ -3523,18 +3643,21 @@ static const char *pattern_variant_name(expr_ty path, const char **enum_name);
 
 static void check_function(Checker *c, asdl_seq *type_params, asdl_seq *params,
                            ret_ty ret, asdl_seq *body, expr_ty body_expr,
-                           ClassInfo *cls, int lambda, int line, int col) {
+                           ClassInfo *cls, int lambda, int is_ctor,
+                           int line, int col) {
     ClassInfo *saved_class = c->current_class;
     Ty *saved_ret = c->current_ret;
     int saved_known = c->current_ret_known;
     int saved_in_fn = c->in_function;
     int saved_gen = c->in_generator;
+    int saved_ctor = c->in_constructor;
     int saved_loop = c->loop_depth;
     TParamSave save;
     size_t i, n = params ? asdl_seq_LEN(params) : 0;
 
     c->current_class = cls;
     c->in_function = 1;
+    c->in_constructor = is_ctor;
     c->in_generator = !lambda && body_has_yield(body);
     c->loop_depth = 0;
     if (ret) {
@@ -3597,6 +3720,7 @@ static void check_function(Checker *c, asdl_seq *type_params, asdl_seq *params,
     c->current_ret_known = saved_known;
     c->in_function = saved_in_fn;
     c->in_generator = saved_gen;
+    c->in_constructor = saved_ctor;
     c->loop_depth = saved_loop;
 }
 
@@ -3610,6 +3734,15 @@ static void check_class(Checker *c, stmt_ty s) {
         member_ty m = asdl_seq_GET(s->v.ClassDef.members, i);
         switch (m->kind) {
         case Field_kind:
+            if (m->v.Field.is_const && !m->v.Field.value)
+                check_error(c, m->lineno, m->col_offset,
+                            "const field '%s' requires an initializer",
+                            m->v.Field.name);
+            else if (m->v.Field.is_readonly && m->v.Field.is_static &&
+                     !m->v.Field.value)
+                check_error(c, m->lineno, m->col_offset,
+                            "static readonly field '%s' requires an initializer",
+                            m->v.Field.name);
             if (m->v.Field.value) {
                 Ty *declared = typeref_to_ty(c, m->v.Field.ty);
                 Ty *actual = infer(c, m->v.Field.value);
@@ -3619,12 +3752,12 @@ static void check_class(Checker *c, stmt_ty s) {
             break;
         case Method_kind:
             check_function(c, m->v.Method.type_params, m->v.Method.params,
-                           m->v.Method.returns, m->v.Method.body, NULL, ci, 0,
+                           m->v.Method.returns, m->v.Method.body, NULL, ci, 0, 0,
                            m->lineno, m->col_offset);
             break;
         case Constructor_kind:
             check_function(c, NULL, m->v.Constructor.params, NULL,
-                           m->v.Constructor.body, NULL, ci, 0, 0, 0);
+                           m->v.Constructor.body, NULL, ci, 0, 1, 0, 0);
             break;
         case Getter_kind: {
             ret_ty ret = NULL;
@@ -3637,14 +3770,14 @@ static void check_class(Checker *c, stmt_ty s) {
                     break;
                 }
             }
-            check_function(c, NULL, NULL, ret, m->v.Getter.body, NULL, ci, 0,
+            check_function(c, NULL, NULL, ret, m->v.Getter.body, NULL, ci, 0, 0,
                            m->lineno, m->col_offset);
             break;
         }
         case Setter_kind: {
             asdl_seq *params = _Aster_seq_new(1, c->arena);
             asdl_seq_SET(params, 0, m->v.Setter.param);
-            check_function(c, NULL, params, NULL, m->v.Setter.body, NULL, ci, 0,
+            check_function(c, NULL, params, NULL, m->v.Setter.body, NULL, ci, 0, 0,
                            m->lineno, m->col_offset);
             break;
         }
@@ -3673,6 +3806,47 @@ static void check_struct(Checker *c, stmt_ty s) {
             check_body(c, m->v.StructCtor.body);
             pop_scope(c);
         }
+    }
+}
+
+/* 필드 대입에 const/readonly 제약을 적용한다. */
+static void check_field_assignment(Checker *c, expr_ty target, Ty *base) {
+    const char *name;
+    ClassInfo *ci;
+    Member *m;
+
+    if (target->kind == Attribute_kind)
+        name = target->v.Attribute.attr;
+    else if (target->kind == PtrAttribute_kind)
+        name = target->v.PtrAttribute.attr;
+    else
+        return;
+
+    if (base && base->kind == TY_PTR)
+        base = base->a ? base->a : NULL;
+    if (!base || base->kind != TY_CLASS)
+        return;
+    ci = find_class(c, base->name);
+    if (!ci)
+        return;
+    ensure_base(c, ci);
+    m = class_member(ci, name);
+    if (!m || m->is_method)
+        return;
+
+    if (m->is_const) {
+        check_error(c, target->lineno, target->col_offset,
+                    "cannot assign to const field '%s'", name);
+        return;
+    }
+    if (m->is_readonly) {
+        ClassInfo *owner = member_owner(ci, name);
+        int allowed = c->in_constructor && owner && c->current_class &&
+                      class_derives(c, c->current_class->name, owner->name);
+        if (!allowed)
+            check_error(c, target->lineno, target->col_offset,
+                        "cannot assign to readonly field '%s' outside its constructor",
+                        name);
     }
 }
 
@@ -3722,12 +3896,15 @@ static void check_assign_target(Checker *c, expr_ty target, Ty *value) {
             }
         }
         Ty *member = attr_type(c, target, base);
+        if (!(base && base->kind == TY_MODULE))
+            check_field_assignment(c, target, base);
         require_assignable(c, member, value, target, "property assignment");
         break;
     }
     case PtrAttribute_kind: {
         Ty *base = infer(c, target->v.PtrAttribute.value);
         Ty *member = attr_type(c, target, base);
+        check_field_assignment(c, target, base);
         require_assignable(c, member, value, target, "field assignment");
         break;
     }
@@ -4117,7 +4294,7 @@ static void check_stmt(Checker *c, stmt_ty s) {
         if (!s->v.FunctionDef.is_extern)
             check_function(c, s->v.FunctionDef.type_params, s->v.FunctionDef.params,
                            s->v.FunctionDef.returns, s->v.FunctionDef.body, NULL,
-                           c->current_class, 0, s->lineno, s->col_offset);
+                           c->current_class, 0, 0, s->lineno, s->col_offset);
         break;
     case ClassDef_kind:
         check_class(c, s);
@@ -4132,10 +4309,11 @@ static void check_stmt(Checker *c, stmt_ty s) {
     case VarDecl_kind: {
         Ty *declared;
         TParamSave save;
-        if (s->v.VarDecl.is_const &&
+        if ((s->v.VarDecl.is_const || s->v.VarDecl.is_readonly) &&
             (!s->v.VarDecl.init || s->v.VarDecl.init->kind == NoInit_kind))
             check_error(c, s->lineno, s->col_offset,
-                        "const declaration '%s' requires an initializer",
+                        "%s declaration '%s' requires an initializer",
+                        s->v.VarDecl.is_const ? "const" : "readonly",
                         s->v.VarDecl.name);
         push_tparams(c, NULL, &save);
         declared = typeref_to_ty(c, s->v.VarDecl.ty);
@@ -4179,7 +4357,7 @@ static void check_stmt(Checker *c, stmt_ty s) {
             }
         }
         define_shadow_const(c, s->v.VarDecl.name, declared,
-                           s->v.VarDecl.is_const);
+                           s->v.VarDecl.is_const || s->v.VarDecl.is_readonly);
         break;
     }
     case EnumDef_kind: {
@@ -4196,7 +4374,7 @@ static void check_stmt(Checker *c, stmt_ty s) {
             if (m->kind == Method_kind)
                 check_function(c, m->v.Method.type_params, m->v.Method.params,
                                m->v.Method.returns, m->v.Method.body, NULL,
-                               ci, 0, m->lineno, m->col_offset);
+                               ci, 0, 0, m->lineno, m->col_offset);
         }
         define_or_update(c, s->v.EnumDef.name, ty_class(c, s->v.EnumDef.name));
         break;
@@ -4512,6 +4690,7 @@ int TypeCheck_ModuleEx(Arena *arena, mod_ty mod, const char *filename,
     /* 3단계: 최상위 모듈의 상속·본문 검사 */
     resolve_bases(&c);
     check_interfaces(&c);
+    check_module_visibility(&c, body);
     check_body(&c, body);
 
     /* 본문 검사 중 지연 로드된 모듈이 있으면 마저 검사한다. */

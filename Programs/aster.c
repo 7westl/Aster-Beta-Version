@@ -4,20 +4,25 @@
 #endif
 
 #include <ctype.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #if defined(_WIN32)
 #include <io.h>
-/* windows.h는 내부 헤더의 VT_* 열거자와 충돌하므로 콘솔 API만 직접 선언한다. */
+/* windows.h는 내부 헤더의 VT_* 열거자와 충돌하므로 필요한 API만 직접 선언한다. */
 __declspec(dllimport) void *__stdcall GetStdHandle(unsigned long n_std_handle);
 __declspec(dllimport) int __stdcall GetConsoleMode(void *handle, unsigned long *mode);
 __declspec(dllimport) int __stdcall SetConsoleMode(void *handle, unsigned long mode);
+__declspec(dllimport) unsigned long __stdcall GetModuleFileNameA(void *module, char *name, unsigned long size);
 #define ASTER_ENABLE_VT_PROCESSING 0x0004
 #define ASTER_STD_OUTPUT_HANDLE ((unsigned long)-11)
 #else
 #include <unistd.h>
+#endif
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
 #endif
 #include "internal/arena.h"
 #include "internal/ast.h"
@@ -30,7 +35,7 @@ __declspec(dllimport) int __stdcall SetConsoleMode(void *handle, unsigned long m
 #include "internal/runtime.h"
 #include "internal/typecheck.h"
 
-#define ASTER_VERSION "Alpha 1.5.1"
+#define ASTER_VERSION "Beta 1.0.0"
 
 static char *read_stream(FILE *f, size_t *size) {
     size_t cap = 4096;
@@ -157,18 +162,80 @@ static char *dir_of_file(const char *path, Arena *arena) {
     return Arena_Strndup(arena, path, len);
 }
 
-static const char *find_stdlib_dir(Arena *arena) {
+static const char *pick_dir(Arena *arena, const char *path) {
+    if (directory_exists(path))
+        return Arena_Strndup(arena, path, strlen(path));
+    return NULL;
+}
+
+/* 실행 파일의 전체 경로를 out에 채운다. 실패하면 0. */
+static int executable_path(char *out, size_t cap, const char *argv0) {
+#if defined(_WIN32)
+    unsigned long n = GetModuleFileNameA(NULL, out, (unsigned long)cap);
+    if (n > 0 && (size_t)n < cap) {
+        size_t i;
+        out[n] = 0;
+        for (i = 0; i < n; i++) {
+            if (out[i] == '\\')
+                out[i] = '/';
+        }
+        return 1;
+    }
+#elif defined(__APPLE__)
+    uint32_t size = (uint32_t)cap;
+    if (_NSGetExecutablePath(out, &size) == 0) {
+        char resolved[4096];
+        if (realpath(out, resolved)) {
+            size_t len = strlen(resolved);
+            if (len < cap) {
+                memcpy(out, resolved, len + 1);
+                return 1;
+            }
+        }
+        return 1;
+    }
+#else
+    ssize_t n = readlink("/proc/self/exe", out, cap - 1);
+    if (n > 0) {
+        out[n] = 0;
+        return 1;
+    }
+#endif
+    if (argv0 && argv0[0] && (strchr(argv0, '/') || strchr(argv0, '\\'))) {
+        size_t len = strlen(argv0);
+        if (len < cap) {
+            memcpy(out, argv0, len + 1);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* 표준 라이브러리(Lib)를 찾는다.
+   1. ASTER_HOME/Lib (사용자 지정 설치)
+   2. 실행 파일 옆의 Lib (포터블 배치)
+   3. <prefix>/bin/aster → <prefix>/lib/aster/Lib (make install 배치)
+   4. 현재 디렉터리의 Lib (소스 트리에서 실행) */
+static const char *find_stdlib_dir(Arena *arena, const char *argv0) {
     const char *home = getenv("ASTER_HOME");
-    char buf[1024];
+    char exe[4096];
+    char buf[4096];
 
     if (home && home[0]) {
         snprintf(buf, sizeof buf, "%s/Lib", home);
         if (directory_exists(buf))
             return Arena_Strndup(arena, buf, strlen(buf));
     }
-    if (directory_exists("Lib"))
-        return Arena_Strndup(arena, "Lib", 3);
-    return NULL;
+    if (executable_path(exe, sizeof exe, argv0)) {
+        char *dir = dir_of_file(exe, arena);
+        snprintf(buf, sizeof buf, "%s/Lib", dir);
+        if (directory_exists(buf))
+            return Arena_Strndup(arena, buf, strlen(buf));
+        snprintf(buf, sizeof buf, "%s/lib/aster/Lib", dir_of_file(dir, arena));
+        if (directory_exists(buf))
+            return Arena_Strndup(arena, buf, strlen(buf));
+    }
+    return pick_dir(arena, "Lib");
 }
 
 static int stdin_is_tty(void) {
@@ -493,7 +560,7 @@ int main(int argc, char **argv) {
             memset(&interp, 0, sizeof interp);
             interp.arena = arena;
             interp.base_dir = ".";
-            interp.stdlib_dir = find_stdlib_dir(arena);
+            interp.stdlib_dir = find_stdlib_dir(arena, argv[0]);
             interp.argv = prog_argv;
             interp.argc = prog_argc;
             Interp_Init(&interp);
@@ -565,7 +632,7 @@ int main(int argc, char **argv) {
         memset(&interp, 0, sizeof(interp));
         interp.arena = arena;
         interp.base_dir = strcmp(path, "-") == 0 ? "." : dir_of_file(path, arena);
-        interp.stdlib_dir = find_stdlib_dir(arena);
+        interp.stdlib_dir = find_stdlib_dir(arena, argv[0]);
         interp.argv = prog_argv;
         interp.argc = prog_argc;
         Interp_Init(&interp);

@@ -1,0 +1,6 @@
+import modifiers_lib;
+
+println(str(modifiers_lib.Hidden));
+println(str(modifiers_lib.module_only));
+println(str(modifiers_lib.file_local));
+println(str(modifiers_lib.plain_but_not_exported));

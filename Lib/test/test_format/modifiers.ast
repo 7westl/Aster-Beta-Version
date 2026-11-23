@@ -1,0 +1,36 @@
+public class Widget {
+    public static const int LIMIT = 10;
+    private readonly int id;
+    internal int state;
+    constructor(int v) {
+        self->id = v;
+        self->state = 0;
+    }
+    public fn get() -> int { return self->id; }
+    static fn make() -> int { return Widget.LIMIT; }
+}
+
+private class Draft {
+    fn get() -> int { return 0; }
+}
+
+public interface Named {
+    fn name() -> str;
+}
+
+public struct Pair {
+    int a;
+    int b;
+};
+
+public enum Kind { A, B }
+
+private exception DraftError;
+
+public fn exported() -> int { return 1; }
+internal fn module_fn() -> int { return 2; }
+static fn file_fn() -> int { return 3; }
+
+public const int PUBLIC_CONST = 4;
+private int private_var = 5;
+readonly int top_ro = 6;

@@ -1,0 +1,15 @@
+from modifiers_lib import Exposed;
+
+readonly int base = 10;
+
+fn bump() -> int {
+    private int step = 2;
+    readonly int limit = 3;
+    const int offset = 1;
+    return step + limit + offset;
+}
+
+Exposed e = new Exposed(5);
+println(str(e.shown()));
+println(str(Exposed.ANSWER));
+println(str(e.id + base + bump()));

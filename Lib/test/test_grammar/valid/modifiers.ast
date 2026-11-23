@@ -1,0 +1,69 @@
+public class PublicClass {
+    public static const int CONSTANT = 1;
+    protected static readonly int PROTECTED_RO = 2;
+    private readonly int private_ro;
+    internal int internal_field;
+    readonly int plain_ro;
+    const int plain_const = 3;
+    constructor() {
+        self->private_ro = 4;
+        self->plain_ro = 5;
+    }
+    public fn public_method() -> int { return self->private_ro; }
+    protected fn protected_method() -> int { return 1; }
+    private fn private_method() -> int { return 2; }
+    internal fn internal_method() -> int { return 3; }
+    static fn static_method() -> int { return 4; }
+}
+
+private class PrivateClass {
+    fn m() -> void {}
+}
+
+internal class InternalClass {
+    fn m() -> void {}
+}
+
+public interface PublicInterface {
+    fn m() -> int;
+}
+
+private interface PrivateInterface {
+    fn m() -> int;
+}
+
+public struct PublicStruct {
+    int x;
+};
+
+private typedef struct Tagged {
+    int y;
+} Alias;
+
+public enum PublicEnum {
+    A,
+    B
+}
+
+private exception PrivateError;
+
+public fn public_fn() -> int { return 1; }
+private fn private_fn() -> int { return 2; }
+internal fn internal_fn() -> int { return 3; }
+static fn file_local_fn() -> int { return 4; }
+public static fn public_file_local_fn() -> int { return 5; }
+
+public const int PUBLIC_CONST = 6;
+private int private_var = 7;
+internal readonly int internal_ro = 8;
+readonly int top_level_ro = 9;
+
+fn body_modifiers() -> int {
+    public int a = 1;
+    private int b = 2;
+    protected int c = 3;
+    internal int d = 4;
+    const int e = 5;
+    readonly int f = 6;
+    return a + b + c + d + e + f;
+}
