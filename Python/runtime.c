@@ -3451,16 +3451,38 @@ static RValue *bi_platform(Interp *in, RValue *self, RValue **args, size_t nargs
 #endif
 }
 
+// static RValue *bi_setenv(Interp *in, RValue *self, RValue **args, size_t nargs) {
+//     (void)self;
+//     if (nargs != 2 || !args[0] || args[0]->kind != RV_STR ||
+//         !args[1] || args[1]->kind != RV_STR)
+//         return RT_ThrowValue(in, "TypeError", "setenv takes exactly 2 string arguments");
+// #if defined(_WIN32)
+//     return RValue_Int(in, _putenv_s(args[0]->u.s->data, args[1]->u.s->data));
+// #else
+//     return RValue_Int(in, setenv(args[0]->u.s->data, args[1]->u.s->data, 1));
+// #endif
+// }
+
 static RValue *bi_setenv(Interp *in, RValue *self, RValue **args, size_t nargs) {
     (void)self;
-    if (nargs != 2 || !args[0] || args[0]->kind != RV_STR ||
-        !args[1] || args[1]->kind != RV_STR)
-        return RT_ThrowValue(in, "TypeError", "setenv takes exactly 2 string arguments");
+    if (nargs != 2 ||
+        !args[0] || args[0]->kind != RV_STR ||
+        !args[1] || args[1]->kind != RV_STR ) {
+            return RT_ThrowValue(in, "TypeError", "setenv takes exactly 2 string arguments");
+        }
+    const char *name = args[0]->u.s->data;
+    const char *value = args[1]->u.s->data;
+    if (!name || !*name || strchr(name, '=')) {
+        return RT_ThrowValue(in, "ValueError", "invalid environment variable name");
+    }
+    int result;
+
 #if defined(_WIN32)
-    return RValue_Int(in, _putenv_s(args[0]->u.s->data, args[1]->u.s->data));
+    result = (int)_putenv_s(name, value);
 #else
-    return RValue_Int(in, setenv(args[0]->u.s->data, args[1]->u.s->data, 1));
+    result = setenv(name, value, 1);
 #endif
+    return RValue_Int(in, result);
 }
 
 static RValue *bi_next(Interp *in, RValue *self, RValue **args, size_t nargs) {
