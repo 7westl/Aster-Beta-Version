@@ -9,15 +9,20 @@ export TEMP = $(TMPDIR)
 export TMP = $(TMPDIR)
 
 # OS 환경 변수는 셸에 따라 비어 있을 수 있으므로 uname으로 플랫폼을 판별한다.
+
+# Platform detection
 UNAME_S := $(shell uname -s 2>/dev/null)
+
 ifneq (,$(filter MINGW% MSYS% CYGWIN%,$(UNAME_S)))
-EXE = .exe
-# Windows Store의 python.exe 별칭은 make가 실행한 뒤 종료되지 않는다. py 런처를 기본으로 쓴다.
-PYTHON ?= py
+    EXE = .exe
+    PYTHON = py -3
 else
-EXE =
-PYTHON ?= python3
+    EXE =
+    PYTHON = python3
 endif
+
+# Windows Store의 python.exe 별칭은 make가 실행한 뒤 종료되지 않는다. py 런처를 기본으로 쓴다.
+
 BIN = aster$(EXE)
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
