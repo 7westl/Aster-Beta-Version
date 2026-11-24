@@ -1,0 +1,30 @@
+# 파일 머리 주석
+# 두 번째 줄
+
+import System;
+
+/* 블록 주석:
+   여러 줄 */
+fn add(int a, int b) -> int {
+    # 함수 안 주석
+    var note = "# not comment /* either */";
+    int sum = a + b; /* 문장 뒤 주석 */
+    return sum + len(note) - 30;
+}
+
+class Box {
+    # 필드 주석
+    private int value;
+
+    /* 메서드 앞 블록 주석 */
+    public fn get() -> int {
+        return self->value;
+    }
+}
+
+fn main() -> void {
+    println(add(1, 2));
+    /* 블록 끝 주석 */
+}
+
+# 파일 끝 주석

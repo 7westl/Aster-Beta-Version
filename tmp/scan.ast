@@ -1,3 +1,4 @@
+import System;
 Scanner sc = new Scanner(System.in);
 if (sc.hasNextLine()) {
   str line = sc.nextLine();

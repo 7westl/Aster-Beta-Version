@@ -1,0 +1,3 @@
+import aster.time.DayOfWeek;
+fn helper(DayOfWeek d, int n) -> int { return d.ordinal + n % 7; }
+println(helper(DayOfWeek.SUNDAY, 1));

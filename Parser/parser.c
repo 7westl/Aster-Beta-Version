@@ -12,6 +12,7 @@
 #include <string.h>
 #include "internal/parser.h"
 #include "internal/object.h"
+#include "internal/gc.h"
 
 typedef struct {
     void **items;
@@ -4278,7 +4279,11 @@ static void parser_free(Parser *p) {
 mod_ty Aster_ParseFile(const char *source, size_t length, Arena *arena, AsterError *err) {
     Parser *p = xrealloc(NULL, sizeof *p);
     mod_ty mod;
+    /* f-string 안의 식을 파싱하듯 중첩 호출되므로 이전 상태로 되돌린다. */
+    int prev_pinning = Aster_GC_Pinning();
 
+    /* 문자열 리터럴은 AST가 계속 가리키므로 수집되지 않게 고정한다. */
+    Aster_GC_SetPinning(1);
     memset(p, 0, sizeof *p);
     memset(err, 0, sizeof *err);
     p->arena = arena;
@@ -4286,6 +4291,7 @@ mod_ty Aster_ParseFile(const char *source, size_t length, Arena *arena, AsterErr
 
     if (!Aster_Tokenize(source, length, &p->list, err)) {
         parser_free(p);
+        Aster_GC_SetPinning(prev_pinning);
         return NULL;
     }
     p->n = p->list.count;
@@ -4293,10 +4299,12 @@ mod_ty Aster_ParseFile(const char *source, size_t length, Arena *arena, AsterErr
 
     if (setjmp(p->jmp)) {
         parser_free(p);
+        Aster_GC_SetPinning(prev_pinning);
         return NULL;
     }
 
     mod = p_file(p);
+    Aster_GC_SetPinning(prev_pinning);
     if (!mod) {
         generic_error(p);
         parser_free(p);
@@ -4310,14 +4318,17 @@ expr_ty Aster_ParseExpression(const char *source, size_t length, Arena *arena,
                               AsterError *err) {
     Parser *p = xrealloc(NULL, sizeof *p);
     expr_ty e;
+    int prev_pinning = Aster_GC_Pinning();
 
     memset(p, 0, sizeof *p);
     memset(err, 0, sizeof *err);
     p->arena = arena;
     p->err = err;
+    Aster_GC_SetPinning(1);
 
     if (!Aster_Tokenize(source, length, &p->list, err)) {
         parser_free(p);
+        Aster_GC_SetPinning(prev_pinning);
         return NULL;
     }
     p->n = p->list.count;
@@ -4325,10 +4336,12 @@ expr_ty Aster_ParseExpression(const char *source, size_t length, Arena *arena,
 
     if (setjmp(p->jmp)) {
         parser_free(p);
+        Aster_GC_SetPinning(prev_pinning);
         return NULL;
     }
 
     e = p_expression(p);
+    Aster_GC_SetPinning(prev_pinning);
     if (!e || cur(p)->type != TOK_ENDMARKER) {
         if (!e) {
             generic_error(p);

@@ -1,0 +1,2 @@
+fn f(int a, int b) -> int { return a + b % 7; }
+println(f(1, 3));

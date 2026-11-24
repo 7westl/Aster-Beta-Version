@@ -10,10 +10,7 @@ Aster is a general-purpose programming language designed to provide a flexible, 
 
 Aster is a programming language project focused on building an independent language ecosystem.
 
-**Current status: Beta 1.0.0.** The language and standard library are feature-frozen
-for the 1.x series: from this release on, existing syntax and exported API are not
-changed in incompatible ways within 1.x. See [Project Status](Doc/status.md) for the
-release policy and known limits.
+**Current status: Beta 2.0.0.** Aster now features a Virtual Machine (VM) execution architecture and Garbage Collection (GC) for automatic memory management. The language and standard library are feature-frozen for the 2.x series: existing syntax and exported APIs will not be changed in incompatible ways within 2.x. See [Project Status](Doc/status.md) for the release policy and known limitations.
 
 ## Installation
 
@@ -31,7 +28,7 @@ The recommended way to install Aster is through **Aster Setup Wizard**.
 aster --version
 ```
 
-**Download:** [Aster Setup Wizard](https://www.mediafire.com/file/lz1teu6176iz10q/aster-b1.0.0-amd64.exe/file)
+**Download:** [Aster Setup Wizard](https://www.mediafire.com/file/qprb7uzloctwiv4/aster-b2.0.0-amd64.exe/file)
 
 For manual installation, building from source, and `make install` layouts, see the
 [Installation Guide](Doc/installation.md).
@@ -68,7 +65,7 @@ must pass `make check`.
 
 ## Version
 
-**Current Version:** `Beta 1.0.0`
+**Current Version:** `Beta 2.0.0`
 
 Release history is in [CHANGELOG.md](CHANGELOG.md).
 

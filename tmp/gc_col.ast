@@ -1,0 +1,2 @@
+fn f(str a, int b) -> int { return a + b % 7; }
+println(f("x", 1));

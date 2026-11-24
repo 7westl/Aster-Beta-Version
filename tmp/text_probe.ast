@@ -16,7 +16,7 @@ SimpleDateFormat y = new SimpleDateFormat("yyyy");
 println(y.format(1000000000000));
 SimpleDateFormat d = DateFormat.getDateInstance();
 println(d.toPattern(), d.format(1000000000000).length());
-Date d2 = DateFormat.getDateInstance(DateFormat.FULL);
+SimpleDateFormat d2 = DateFormat.getDateInstance(DateFormat.FULL);
 println(d2.toPattern());
 SimpleDateFormat p = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 int millis = p.parse("2001-09-09 01:46:40");

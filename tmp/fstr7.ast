@@ -1,0 +1,3 @@
+import System.stdout.*;
+println(f"{0}");
+println(f"ab{0}cd");

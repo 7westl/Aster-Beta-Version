@@ -147,6 +147,7 @@ struct EnumInfo {
 struct Checker {
     Arena *arena;
     const char *filename;
+    const char *source;      /* 진단에 원문 줄을 보여줄 때 쓴다 (없으면 NULL) */
     int errors;
     Scope *scope;
     ClassInfo *classes;
@@ -1194,8 +1195,7 @@ static void check_error(Checker *c, int line, int col, const char *fmt, ...) {
     c->last_error_line = line;
     c->last_error_col = col;
     snprintf(c->last_error_msg, sizeof c->last_error_msg, "%s", buf);
-    fprintf(stderr, "%s:%d:%d: error: %s\n",
-            c->filename ? c->filename : "<input>", line, col + 1, buf);
+    Aster_Diagnostic(stderr, c->filename, c->source, line, col, 1, "error", buf);
     c->errors++;
 }
 
@@ -1797,8 +1797,8 @@ static ModuleInfo *load_module(Checker *c, const char *name, int line, int col) 
         return mi;
     }
     mod = Aster_ParseFile(source, size, c->arena, &err);
-    free(source);
     if (!mod) {
+        free(source);
         check_error(c, line, col, "syntax error in module '%s': %s:%d:%d: %s",
                     name, file, err.line, err.col + 1, err.message);
         mi->loading = 0;
@@ -1813,6 +1813,8 @@ static ModuleInfo *load_module(Checker *c, const char *name, int line, int col) 
         memset(mc, 0, sizeof(*mc));
         mc->arena = c->arena;
         mc->filename = Arena_Strndup(c->arena, file, strlen(file));
+        mc->source = Arena_Strndup(c->arena, source, size);
+        free(source);
         mc->env = c->env;
         mc->modules = c->modules;
         mc->root = c->root ? c->root : c;
@@ -4660,14 +4662,15 @@ static void init_builtins(Checker *c) {
 
 /* ------------------------------------------------------------------ 진입점 */
 
-int TypeCheck_ModuleEx(Arena *arena, mod_ty mod, const char *filename,
-                       const TypeCheckEnv *env) {
+static int typecheck_module(Arena *arena, mod_ty mod, const char *filename,
+                            const char *source, const TypeCheckEnv *env) {
     Checker c;
     asdl_seq *body;
 
     memset(&c, 0, sizeof(c));
     c.arena = arena;
     c.filename = filename;
+    c.source = source;
     c.env = env;
 
     if (!mod || mod->kind != Module_kind)
@@ -4699,6 +4702,16 @@ int TypeCheck_ModuleEx(Arena *arena, mod_ty mod, const char *filename,
     return c.errors > 0 ? 1 : 0;
 }
 
+int TypeCheck_ModuleEx(Arena *arena, mod_ty mod, const char *filename,
+                       const TypeCheckEnv *env) {
+    return typecheck_module(arena, mod, filename, NULL, env);
+}
+
+int TypeCheck_ModuleWithSource(Arena *arena, mod_ty mod, const char *filename,
+                               const char *source, const TypeCheckEnv *env) {
+    return typecheck_module(arena, mod, filename, source, env);
+}
+
 int TypeCheck_Module(Arena *arena, mod_ty mod, const char *filename) {
-    return TypeCheck_ModuleEx(arena, mod, filename, NULL);
+    return typecheck_module(arena, mod, filename, NULL, NULL);
 }

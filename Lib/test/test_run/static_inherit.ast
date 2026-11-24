@@ -1,0 +1,31 @@
+import System.stdout.*;
+
+class Base {
+    public static const int ANSWER = 41;
+    public static fn make() -> Base { return new Base(); }
+    public static fn plus() -> int { return Base.ANSWER + 1; }
+    public fn label() -> str { return "base"; }
+}
+
+class Derived extends Base {
+    public fn label() -> str { return "derived"; }
+}
+
+class Forward extends Late {
+    public fn label() -> str { return "forward"; }
+}
+
+class Late {
+    public static fn make() -> Late { return new Late(); }
+    public fn label() -> str { return "late"; }
+}
+
+println(Base.make().label());
+println(Derived.make().label());
+println(Derived.ANSWER);
+println(Derived.plus());
+
+Derived d = new Derived();
+println(d.label());
+
+println(Forward.make().label());

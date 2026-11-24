@@ -1,2 +1,8 @@
-Error: NameError: name 'undefined_name' is not defined
-Error: ValueError: kaboom
+<repl>:1:1: error: NameError: name 'undefined_name' is not defined
+undefined_name
+^^^^^^^^^^^^^^
+Traceback (most recent call last):
+  at boom (line 1)
+<repl>:1:26: error: ValueError: kaboom
+boom()
+                         ^^^^^^^^

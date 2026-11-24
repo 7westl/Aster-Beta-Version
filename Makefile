@@ -29,15 +29,18 @@ BINDIR ?= $(PREFIX)/bin
 LIBDIR ?= $(PREFIX)/lib/aster
 
 SRCS = Programs/aster.c \
+       Programs/lineedit.c \
        Programs/pkg.c \
        Parser/token.c \
        Parser/lexer/lexer.c \
        Parser/parser.c \
        Python/arena.c \
        Python/Aster-ast.c \
+       Python/gc.c \
        Python/runtime.c \
        Python/regex.c \
        Python/interp.c \
+       Python/vm.c \
        Python/typecheck.c \
        Python/formatter.c \
        Python/linter.c \
@@ -51,12 +54,15 @@ HEADERS = Include/internal/token.h \
           Include/internal/arena.h \
           Include/internal/value.h \
           Include/internal/object.h \
+          Include/internal/gc.h \
           Include/internal/runtime.h \
           Include/internal/regex.h \
           Include/internal/interp.h \
+          Include/internal/vm.h \
           Include/internal/typecheck.h \
           Include/internal/formatter.h \
           Include/internal/linter.h \
+          Include/internal/lineedit.h \
           Include/internal/regex.h \
           Include/internal/unicode_ranges.h \
           Include/internal/pkg.h
@@ -84,6 +90,7 @@ check: $(BIN)
 	$(PYTHON) Tools/check_lib.py $(CHECK_FLAGS)
 	$(PYTHON) Tools/check_repl.py $(SEED_ARG) $(CHECK_FLAGS)
 	$(PYTHON) Tools/check_tools.py $(SEED_ARG) $(CHECK_FLAGS)
+	$(PYTHON) Tools/check_pkg.py $(CHECK_FLAGS)
 	$(PYTHON) Tools/check_random.py $(SEED_ARG) $(CHECK_FLAGS)
 	$(PYTHON) Tools/check_java.py $(SEED_ARG) $(CHECK_FLAGS)
 

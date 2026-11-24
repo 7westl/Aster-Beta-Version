@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "internal/regex.h"
+#include "internal/gc.h"
 #include "internal/unicode_ranges.h"
 
 #ifndef SIZE_MAX
@@ -3089,4 +3090,15 @@ void Regex_Install(Interp *in) {
                RValue_Builtin(in, Builtin_New(in, "sub", re_bi_sub)));
     Env_Define(in, m->env, "escape",
                RValue_Builtin(in, Builtin_New(in, "escape", re_bi_escape)));
+}
+
+/* 매치 결과가 붙잡고 있는 대상 문자열을 GC 루트로 표시한다. */
+void Regex_MarkInterp(Interp *in) {
+    size_t i;
+
+    for (i = 0; i < in->nregex_matches; i++) {
+        RMatch *m = in->regex_matches[i];
+        if (m && m->subject)
+            Aster_GC_MarkPointer(m->subject);
+    }
 }

@@ -1,0 +1,1213 @@
+[parse] ParseFile pinning on
+[gc] SetPinning(1)
+[gc] SetPinning(1)
+[gc] SetPinning(0)
+[gc] SetPinning(1)
+[gc] SetPinning(0)
+[gc] collect begin (0 bytes)
+[gc] roots done (gray=0)
+[gc] drain done
+[gc] alloc kind=2 size=27 at 000001D51099FE70 (live=27) pinned=0
+[str] 000001D51099FE70 len=2
+[gc] SetPinning(1)
+[gc] SetPinning(0)
+[gc] collect begin (27 bytes)
+[gc] roots done (gray=1)
+[gc] drain done
+[gc] alloc kind=2 size=27 at 000001D51099FF10 (live=54) pinned=0
+[str] 000001D51099FF10 len=2
+[gc] collect begin (54 bytes)
+[gc] roots done (gray=0)
+[gc] drain done
+[gc] free kind=2 size=27 at 000001D51099FF10
+[gc] free kind=2 size=27 at 000001D51099FE70
+[gc] alloc kind=2 size=27 at 000001D51099FA60 (live=27) pinned=0
+[str] 000001D51099FA60 len=2
+[gc] SetPinning(1)
+[gc] SetPinning(0)
+[gc] collect begin (27 bytes)
+[gc] roots done (gray=1)
+[gc] drain done
+[gc] alloc kind=2 size=27 at 000001D51099FE70 (live=54) pinned=0
+[str] 000001D51099FE70 len=2
+[gc] SetPinning(0)
+[gc] collect begin (54 bytes)
+[gc] roots done (gray=0)
+[gc] drain done
+[gc] free kind=2 size=27 at 000001D51099FE70
+[gc] free kind=2 size=27 at 000001D51099FA60
+[gc] alloc kind=14 size=56 at 000001D5109A70C0 (live=56) pinned=0
+[gc] collect begin (56 bytes)
+[gc] roots done (gray=1)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5450 (live=80) pinned=0
+[gc] collect begin (80 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109A7480 (live=128) pinned=0
+[gc] collect begin (128 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D51099FE70 (live=160) pinned=0
+[gc] collect begin (160 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5290 (live=184) pinned=0
+[gc] collect begin (184 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109A7360 (live=232) pinned=0
+[gc] collect begin (232 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D51099FA60 (live=264) pinned=0
+[gc] collect begin (264 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5490 (live=288) pinned=0
+[gc] collect begin (288 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109A7540 (live=336) pinned=0
+[gc] collect begin (336 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D51099F8D0 (live=368) pinned=0
+[gc] collect begin (368 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4E90 (live=392) pinned=0
+[gc] collect begin (392 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109A7720 (live=440) pinned=0
+[gc] collect begin (440 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D51099F920 (live=472) pinned=0
+[gc] collect begin (472 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5750 (live=496) pinned=0
+[gc] collect begin (496 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109A7420 (live=544) pinned=0
+[gc] collect begin (544 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D51099F9C0 (live=576) pinned=0
+[gc] collect begin (576 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4B90 (live=600) pinned=0
+[gc] collect begin (600 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109A75A0 (live=648) pinned=0
+[gc] collect begin (648 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D51099FA10 (live=680) pinned=0
+[gc] collect begin (680 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5210 (live=704) pinned=0
+[gc] collect begin (704 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109A7120 (live=752) pinned=0
+[gc] collect begin (752 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A98F0 (live=784) pinned=0
+[gc] collect begin (784 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5510 (live=808) pinned=0
+[gc] collect begin (808 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109A74E0 (live=856) pinned=0
+[gc] collect begin (856 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA200 (live=888) pinned=0
+[gc] collect begin (888 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5110 (live=912) pinned=0
+[gc] collect begin (912 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109A7600 (live=960) pinned=0
+[gc] collect begin (960 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA2F0 (live=992) pinned=0
+[gc] collect begin (992 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4B10 (live=1016) pinned=0
+[gc] collect begin (1016 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109A7660 (live=1064) pinned=0
+[gc] collect begin (1064 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9990 (live=1096) pinned=0
+[gc] collect begin (1096 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4C10 (live=1120) pinned=0
+[gc] collect begin (1120 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109A7780 (live=1168) pinned=0
+[gc] collect begin (1168 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9E40 (live=1200) pinned=0
+[gc] collect begin (1200 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4ED0 (live=1224) pinned=0
+[gc] collect begin (1224 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109A76C0 (live=1272) pinned=0
+[gc] collect begin (1272 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA610 (live=1304) pinned=0
+[gc] collect begin (1304 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5590 (live=1328) pinned=0
+[gc] collect begin (1328 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109A7060 (live=1376) pinned=0
+[gc] collect begin (1376 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9850 (live=1408) pinned=0
+[gc] collect begin (1408 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A51D0 (live=1432) pinned=0
+[gc] collect begin (1432 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AA850 (live=1480) pinned=0
+[gc] collect begin (1480 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9E90 (live=1512) pinned=0
+[gc] collect begin (1512 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4F10 (live=1536) pinned=0
+[gc] collect begin (1536 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AA8B0 (live=1584) pinned=0
+[gc] collect begin (1584 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA020 (live=1616) pinned=0
+[gc] collect begin (1616 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5850 (live=1640) pinned=0
+[gc] collect begin (1640 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB3F0 (live=1688) pinned=0
+[gc] collect begin (1688 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9EE0 (live=1720) pinned=0
+[gc] collect begin (1720 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=17 size=16 at 000001D5109A5250 (live=1736) pinned=0
+[gc] collect begin (1736 bytes)
+[gc] roots done (gray=6)
+[gc] drain done
+[gc] alloc kind=18 size=256 at 000001D5109A8910 (live=1992) pinned=0
+[gc] collect begin (1992 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A55D0 (live=2016) pinned=0
+[gc] collect begin (2016 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB150 (live=2064) pinned=0
+[gc] collect begin (2064 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9C60 (live=2096) pinned=0
+[gc] collect begin (2096 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5650 (live=2120) pinned=0
+[gc] collect begin (2120 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AAC10 (live=2168) pinned=0
+[gc] collect begin (2168 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9A30 (live=2200) pinned=0
+[gc] collect begin (2200 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4C90 (live=2224) pinned=0
+[gc] collect begin (2224 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AAFD0 (live=2272) pinned=0
+[gc] collect begin (2272 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9F80 (live=2304) pinned=0
+[gc] collect begin (2304 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5310 (live=2328) pinned=0
+[gc] collect begin (2328 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB270 (live=2376) pinned=0
+[gc] collect begin (2376 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9F30 (live=2408) pinned=0
+[gc] collect begin (2408 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5690 (live=2432) pinned=0
+[gc] collect begin (2432 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB570 (live=2480) pinned=0
+[gc] collect begin (2480 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9B70 (live=2512) pinned=0
+[gc] collect begin (2512 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A52D0 (live=2536) pinned=0
+[gc] collect begin (2536 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB2D0 (live=2584) pinned=0
+[gc] collect begin (2584 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA250 (live=2616) pinned=0
+[gc] collect begin (2616 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A56D0 (live=2640) pinned=0
+[gc] collect begin (2640 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB5D0 (live=2688) pinned=0
+[gc] collect begin (2688 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA5C0 (live=2720) pinned=0
+[gc] collect begin (2720 bytes)
+[gc] roots done (gray=6)
+[gc] drain done
+[gc] alloc kind=18 size=512 at 000001D5109A8A40 (live=3232) pinned=0
+[gc] collect begin (3232 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] free kind=18 size=256 at 000001D5109A8910
+[gc] alloc kind=16 size=24 at 000001D5109A5190 (live=3000) pinned=0
+[gc] collect begin (3000 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AAA30 (live=3048) pinned=0
+[gc] collect begin (3048 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9DA0 (live=3080) pinned=0
+[gc] collect begin (3080 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5710 (live=3104) pinned=0
+[gc] collect begin (3104 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AAF10 (live=3152) pinned=0
+[gc] collect begin (3152 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9CB0 (live=3184) pinned=0
+[gc] collect begin (3184 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A58D0 (live=3208) pinned=0
+[gc] collect begin (3208 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB1B0 (live=3256) pinned=0
+[gc] collect begin (3256 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9A80 (live=3288) pinned=0
+[gc] collect begin (3288 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5350 (live=3312) pinned=0
+[gc] collect begin (3312 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AAEB0 (live=3360) pinned=0
+[gc] collect begin (3360 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9DF0 (live=3392) pinned=0
+[gc] collect begin (3392 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5010 (live=3416) pinned=0
+[gc] collect begin (3416 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AA6D0 (live=3464) pinned=0
+[gc] collect begin (3464 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA0C0 (live=3496) pinned=0
+[gc] collect begin (3496 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5390 (live=3520) pinned=0
+[gc] collect begin (3520 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB330 (live=3568) pinned=0
+[gc] collect begin (3568 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA110 (live=3600) pinned=0
+[gc] collect begin (3600 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5790 (live=3624) pinned=0
+[gc] collect begin (3624 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AA970 (live=3672) pinned=0
+[gc] collect begin (3672 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA070 (live=3704) pinned=0
+[gc] collect begin (3704 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A57D0 (live=3728) pinned=0
+[gc] collect begin (3728 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AADF0 (live=3776) pinned=0
+[gc] collect begin (3776 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA160 (live=3808) pinned=0
+[gc] collect begin (3808 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4CD0 (live=3832) pinned=0
+[gc] collect begin (3832 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AAF70 (live=3880) pinned=0
+[gc] collect begin (3880 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9D00 (live=3912) pinned=0
+[gc] collect begin (3912 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4B50 (live=3936) pinned=0
+[gc] collect begin (3936 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB030 (live=3984) pinned=0
+[gc] collect begin (3984 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9C10 (live=4016) pinned=0
+[gc] collect begin (4016 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB090 (live=4064) pinned=0
+[gc] collect begin (4064 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A98A0 (live=4096) pinned=0
+[gc] collect begin (4096 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AAE50 (live=4144) pinned=0
+[gc] collect begin (4144 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA1B0 (live=4176) pinned=0
+[gc] collect begin (4176 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB0F0 (live=4224) pinned=0
+[gc] collect begin (4224 bytes)
+[gc] roots done (gray=6)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A97B0 (live=4256) pinned=0
+[gc] collect begin (4256 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AAC70 (live=4304) pinned=0
+[gc] collect begin (4304 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9BC0 (live=4336) pinned=0
+[gc] collect begin (4336 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AA910 (live=4384) pinned=0
+[gc] collect begin (4384 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9940 (live=4416) pinned=0
+[gc] collect begin (4416 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB210 (live=4464) pinned=0
+[gc] collect begin (4464 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A99E0 (live=4496) pinned=0
+[gc] collect begin (4496 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AAA90 (live=4544) pinned=0
+[gc] collect begin (4544 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9FD0 (live=4576) pinned=0
+[gc] collect begin (4576 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB390 (live=4624) pinned=0
+[gc] collect begin (4624 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA2A0 (live=4656) pinned=0
+[gc] collect begin (4656 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB4B0 (live=4704) pinned=0
+[gc] collect begin (4704 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9AD0 (live=4736) pinned=0
+[gc] collect begin (4736 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AABB0 (live=4784) pinned=0
+[gc] collect begin (4784 bytes)
+[gc] roots done (gray=6)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA340 (live=4816) pinned=0
+[gc] collect begin (4816 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB450 (live=4864) pinned=0
+[gc] collect begin (4864 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9D50 (live=4896) pinned=0
+[gc] collect begin (4896 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AAAF0 (live=4944) pinned=0
+[gc] collect begin (4944 bytes)
+[gc] roots done (gray=6)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA390 (live=4976) pinned=0
+[gc] collect begin (4976 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=18 size=1024 at 000001D5109ACFD0 (live=6000) pinned=0
+[gc] collect begin (6000 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] free kind=18 size=512 at 000001D5109A8A40
+[gc] alloc kind=1 size=48 at 000001D5109AA730 (live=5536) pinned=0
+[gc] collect begin (5536 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA3E0 (live=5568) pinned=0
+[gc] collect begin (5568 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AB510 (live=5616) pinned=0
+[gc] collect begin (5616 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA430 (live=5648) pinned=0
+[gc] collect begin (5648 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AA9D0 (live=5696) pinned=0
+[gc] collect begin (5696 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA480 (live=5728) pinned=0
+[gc] collect begin (5728 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AA790 (live=5776) pinned=0
+[gc] collect begin (5776 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA4D0 (live=5808) pinned=0
+[gc] collect begin (5808 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AACD0 (live=5856) pinned=0
+[gc] collect begin (5856 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9710 (live=5888) pinned=0
+[gc] collect begin (5888 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AA7F0 (live=5936) pinned=0
+[gc] collect begin (5936 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA570 (live=5968) pinned=0
+[gc] collect begin (5968 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AAB50 (live=6016) pinned=0
+[gc] collect begin (6016 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9760 (live=6048) pinned=0
+[gc] collect begin (6048 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AAD30 (live=6096) pinned=0
+[gc] collect begin (6096 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AA520 (live=6128) pinned=0
+[gc] collect begin (6128 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AAD90 (live=6176) pinned=0
+[gc] collect begin (6176 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9800 (live=6208) pinned=0
+[gc] collect begin (6208 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AD8D0 (live=6256) pinned=0
+[gc] collect begin (6256 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A9B20 (live=6288) pinned=0
+[gc] collect begin (6288 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AD7B0 (live=6336) pinned=0
+[gc] collect begin (6336 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109A96C0 (live=6368) pinned=0
+[gc] collect begin (6368 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AD690 (live=6416) pinned=0
+[gc] collect begin (6416 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AE500 (live=6448) pinned=0
+[gc] collect begin (6448 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AD6F0 (live=6496) pinned=0
+[gc] collect begin (6496 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEB40 (live=6528) pinned=0
+[gc] collect begin (6528 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AD5D0 (live=6576) pinned=0
+[gc] collect begin (6576 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEF50 (live=6608) pinned=0
+[gc] collect begin (6608 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=14 size=56 at 000001D5109AD750 (live=6664) pinned=0
+[gc] collect begin (6664 bytes)
+[gc] roots done (gray=2)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AE110 (live=6712) pinned=0
+[gc] collect begin (6712 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEC30 (live=6744) pinned=0
+[gc] collect begin (6744 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AD810 (live=6792) pinned=0
+[gc] collect begin (6792 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AE5F0 (live=6824) pinned=0
+[gc] collect begin (6824 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=3 size=24 at 000001D5109A4D10 (live=6848) pinned=0
+[gc] collect begin (6848 bytes)
+[gc] roots done (gray=3)
+[gc] drain done
+[gc] alloc kind=14 size=56 at 000001D5109AD4B0 (live=6904) pinned=0
+[gc] collect begin (6904 bytes)
+[gc] roots done (gray=4)
+[gc] drain done
+[gc] alloc kind=14 size=56 at 000001D5109AD870 (live=6960) pinned=0
+[gc] collect begin (6960 bytes)
+[gc] roots done (gray=5)
+[gc] drain done
+[gc] alloc kind=14 size=56 at 000001D5109AE1D0 (live=7016) pinned=0
+[gc] collect begin (7016 bytes)
+[gc] roots done (gray=6)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5810 (live=7040) pinned=0
+[gc] collect begin (7040 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADB10 (live=7088) pinned=0
+[gc] collect begin (7088 bytes)
+[gc] roots done (gray=8)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AF130 (live=7120) pinned=0
+[gc] collect begin (7120 bytes)
+[gc] roots done (gray=8)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A53D0 (live=7144) pinned=0
+[gc] collect begin (7144 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADCF0 (live=7192) pinned=0
+[gc] collect begin (7192 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AE870 (live=7224) pinned=0
+[gc] collect begin (7224 bytes)
+[gc] roots done (gray=8)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5910 (live=7248) pinned=0
+[gc] collect begin (7248 bytes)
+[gc] roots done (gray=8)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AE170 (live=7296) pinned=0
+[gc] collect begin (7296 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AF180 (live=7328) pinned=0
+[gc] collect begin (7328 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5950 (live=7352) pinned=0
+[gc] collect begin (7352 bytes)
+[gc] roots done (gray=8)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADC30 (live=7400) pinned=0
+[gc] collect begin (7400 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEF00 (live=7432) pinned=0
+[gc] collect begin (7432 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADE10 (live=7480) pinned=0
+[gc] collect begin (7480 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AF1D0 (live=7512) pinned=0
+[gc] collect begin (7512 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AD450 (live=7560) pinned=0
+[gc] collect begin (7560 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEBE0 (live=7592) pinned=0
+[gc] collect begin (7592 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AD930 (live=7640) pinned=0
+[gc] collect begin (7640 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AE550 (live=7672) pinned=0
+[gc] collect begin (7672 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADF90 (live=7720) pinned=0
+[gc] collect begin (7720 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AE730 (live=7752) pinned=0
+[gc] collect begin (7752 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AE230 (live=7800) pinned=0
+[gc] collect begin (7800 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEA00 (live=7832) pinned=0
+[gc] collect begin (7832 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADE70 (live=7880) pinned=0
+[gc] collect begin (7880 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AF0E0 (live=7912) pinned=0
+[gc] collect begin (7912 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADAB0 (live=7960) pinned=0
+[gc] collect begin (7960 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AED70 (live=7992) pinned=0
+[gc] collect begin (7992 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4F90 (live=8016) pinned=0
+[gc] collect begin (8016 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AD990 (live=8064) pinned=0
+[gc] collect begin (8064 bytes)
+[gc] roots done (gray=11)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AE640 (live=8096) pinned=0
+[gc] collect begin (8096 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5990 (live=8120) pinned=0
+[gc] collect begin (8120 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AD510 (live=8168) pinned=0
+[gc] collect begin (8168 bytes)
+[gc] roots done (gray=11)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEAA0 (live=8200) pinned=0
+[gc] collect begin (8200 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A59D0 (live=8224) pinned=0
+[gc] collect begin (8224 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AD570 (live=8272) pinned=0
+[gc] collect begin (8272 bytes)
+[gc] roots done (gray=11)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AF220 (live=8304) pinned=0
+[gc] collect begin (8304 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=14 size=56 at 000001D5109ADDB0 (live=8360) pinned=0
+[gc] collect begin (8360 bytes)
+[gc] roots done (gray=6)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5150 (live=8384) pinned=0
+[gc] collect begin (8384 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AD9F0 (live=8432) pinned=0
+[gc] collect begin (8432 bytes)
+[gc] roots done (gray=8)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AF090 (live=8464) pinned=0
+[gc] collect begin (8464 bytes)
+[gc] roots done (gray=8)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4D90 (live=8488) pinned=0
+[gc] collect begin (8488 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AD630 (live=8536) pinned=0
+[gc] collect begin (8536 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AE8C0 (live=8568) pinned=0
+[gc] collect begin (8568 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4DD0 (live=8592) pinned=0
+[gc] collect begin (8592 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AE0B0 (live=8640) pinned=0
+[gc] collect begin (8640 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AF270 (live=8672) pinned=0
+[gc] collect begin (8672 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4E10 (live=8696) pinned=0
+[gc] collect begin (8696 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADB70 (live=8744) pinned=0
+[gc] collect begin (8744 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEAF0 (live=8776) pinned=0
+[gc] collect begin (8776 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4E50 (live=8800) pinned=0
+[gc] collect begin (8800 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AE290 (live=8848) pinned=0
+[gc] collect begin (8848 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AF3B0 (live=8880) pinned=0
+[gc] collect begin (8880 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A4FD0 (live=8904) pinned=0
+[gc] collect begin (8904 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADBD0 (live=8952) pinned=0
+[gc] collect begin (8952 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AE690 (live=8984) pinned=0
+[gc] collect begin (8984 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5050 (live=9008) pinned=0
+[gc] collect begin (9008 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADC90 (live=9056) pinned=0
+[gc] collect begin (9056 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AE9B0 (live=9088) pinned=0
+[gc] collect begin (9088 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109A5090 (live=9112) pinned=0
+[gc] collect begin (9112 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AE2F0 (live=9160) pinned=0
+[gc] collect begin (9160 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AF2C0 (live=9192) pinned=0
+[gc] collect begin (9192 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109B02F0 (live=9216) pinned=0
+[gc] collect begin (9216 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADA50 (live=9264) pinned=0
+[gc] collect begin (9264 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AE5A0 (live=9296) pinned=0
+[gc] collect begin (9296 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109AF7F0 (live=9320) pinned=0
+[gc] collect begin (9320 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADFF0 (live=9368) pinned=0
+[gc] collect begin (9368 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEA50 (live=9400) pinned=0
+[gc] collect begin (9400 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109AF770 (live=9424) pinned=0
+[gc] collect begin (9424 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADF30 (live=9472) pinned=0
+[gc] collect begin (9472 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AE6E0 (live=9504) pinned=0
+[gc] collect begin (9504 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109AF7B0 (live=9528) pinned=0
+[gc] collect begin (9528 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADD50 (live=9576) pinned=0
+[gc] collect begin (9576 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEEB0 (live=9608) pinned=0
+[gc] collect begin (9608 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109B0370 (live=9632) pinned=0
+[gc] collect begin (9632 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AE350 (live=9680) pinned=0
+[gc] collect begin (9680 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEB90 (live=9712) pinned=0
+[gc] collect begin (9712 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109B00B0 (live=9736) pinned=0
+[gc] collect begin (9736 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109ADED0 (live=9784) pinned=0
+[gc] collect begin (9784 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEFA0 (live=9816) pinned=0
+[gc] collect begin (9816 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109B0330 (live=9840) pinned=0
+[gc] collect begin (9840 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109AE050 (live=9888) pinned=0
+[gc] collect begin (9888 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEC80 (live=9920) pinned=0
+[gc] collect begin (9920 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109AF830 (live=9944) pinned=0
+[gc] collect begin (9944 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B11A0 (live=9992) pinned=0
+[gc] collect begin (9992 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AE780 (live=10024) pinned=0
+[gc] collect begin (10024 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=17 size=16 at 000001D5109AFFF0 (live=10040) pinned=0
+[gc] collect begin (10040 bytes)
+[gc] roots done (gray=13)
+[gc] drain done
+[gc] alloc kind=18 size=256 at 000001D5109A8910 (live=10296) pinned=0
+[gc] collect begin (10296 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109AFC70 (live=10320) pinned=0
+[gc] collect begin (10320 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B1260 (live=10368) pinned=0
+[gc] collect begin (10368 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AECD0 (live=10400) pinned=0
+[gc] collect begin (10400 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109AF870 (live=10424) pinned=0
+[gc] collect begin (10424 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B0C60 (live=10472) pinned=0
+[gc] collect begin (10472 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AED20 (live=10504) pinned=0
+[gc] collect begin (10504 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109AF930 (live=10528) pinned=0
+[gc] collect begin (10528 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B1380 (live=10576) pinned=0
+[gc] collect begin (10576 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEE60 (live=10608) pinned=0
+[gc] collect begin (10608 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=16 size=24 at 000001D5109AFB30 (live=10632) pinned=0
+[gc] collect begin (10632 bytes)
+[gc] roots done (gray=7)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B1020 (live=10680) pinned=0
+[gc] collect begin (10680 bytes)
+[gc] roots done (gray=10)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEFF0 (live=10712) pinned=0
+[gc] collect begin (10712 bytes)
+[gc] roots done (gray=6)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B06C0 (live=10760) pinned=0
+[gc] collect begin (10760 bytes)
+[gc] roots done (gray=9)
+[gc] drain done
+[gc] alloc kind=15 size=32 at 000001D5109AEE10 (live=10792) pinned=0
+[gc] collect begin (10792 bytes)
+[gc] roots done (gray=15)
+[gc] drain done
+[gc] free kind=1 size=48 at 000001D5109AAF10
+[gc] free kind=16 size=24 at 000001D5109A5710
+[gc] free kind=1 size=48 at 000001D5109AAA30
+[gc] free kind=16 size=24 at 000001D5109A5190
+[gc] alloc kind=2 size=25 at 000001D5109AF040 (live=10673) pinned=0
+[str] 000001D5109AF040 len=0
+[gc] collect begin (10673 bytes)
+[gc] roots done (gray=16)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B0B40 (live=10721) pinned=0
+[gc] collect begin (10721 bytes)
+[gc] roots done (gray=17)
+[gc] drain done
+[gc] alloc kind=2 size=26 at 000001D5109AE7D0 (live=10747) pinned=0
+[str] 000001D5109AE7D0 len=1
+[gc] collect begin (10747 bytes)
+[gc] roots done (gray=18)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B0C00 (live=10795) pinned=0
+[gc] collect begin (10795 bytes)
+[gc] roots done (gray=19)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B0A80 (live=10843) pinned=0
+[gc] collect begin (10843 bytes)
+[gc] roots done (gray=19)
+[gc] drain done
+[gc] free kind=1 size=48 at 000001D5109B0C00
+[gc] alloc kind=2 size=26 at 000001D5109AE460 (live=10821) pinned=0
+[str] 000001D5109AE460 len=1
+[gc] collect begin (10821 bytes)
+[gc] roots done (gray=20)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B0C00 (live=10869) pinned=0
+[gc] collect begin (10869 bytes)
+[gc] roots done (gray=15)
+[gc] drain done
+[gc] free kind=1 size=48 at 000001D5109B0A80
+[gc] free kind=2 size=26 at 000001D5109AE7D0
+[gc] free kind=1 size=48 at 000001D5109B0B40
+[gc] free kind=2 size=25 at 000001D5109AF040
+[gc] alloc kind=2 size=25 at 000001D5109AEDC0 (live=10747) pinned=0
+[str] 000001D5109AEDC0 len=0
+[gc] collect begin (10747 bytes)
+[gc] roots done (gray=16)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B0600 (live=10795) pinned=0
+[gc] collect begin (10795 bytes)
+[gc] roots done (gray=17)
+[gc] drain done
+[gc] alloc kind=2 size=29 at 000001D5109AF310 (live=10824) pinned=0
+[str] 000001D5109AF310 len=4
+[gc] collect begin (10824 bytes)
+[gc] roots done (gray=18)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B0D80 (live=10872) pinned=0
+[gc] collect begin (10872 bytes)
+[gc] roots done (gray=19)
+[gc] drain done
+[gc] alloc kind=2 size=29 at 000001D5109AE7D0 (live=10901) pinned=0
+[str] 000001D5109AE7D0 len=4
+[gc] collect begin (10901 bytes)
+[gc] roots done (gray=20)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B0960 (live=10949) pinned=0
+[gc] collect begin (10949 bytes)
+[gc] roots done (gray=21)
+[gc] drain done
+[gc] alloc kind=2 size=26 at 000001D5109AE820 (live=10975) pinned=0
+[str] 000001D5109AE820 len=1
+[gc] collect begin (10975 bytes)
+[gc] roots done (gray=20)
+[gc] drain done
+[gc] free kind=1 size=48 at 000001D5109B0600
+[gc] free kind=2 size=25 at 000001D5109AEDC0
+[gc] alloc kind=1 size=48 at 000001D5109B0720 (live=10950) pinned=0
+[gc] collect begin (10950 bytes)
+[gc] roots done (gray=21)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B0F60 (live=10998) pinned=0
+[gc] collect begin (10998 bytes)
+[gc] roots done (gray=19)
+[gc] drain done
+[gc] free kind=1 size=48 at 000001D5109B0720
+[gc] free kind=1 size=48 at 000001D5109B0D80
+[gc] free kind=2 size=29 at 000001D5109AF310
+[gc] alloc kind=2 size=30 at 000001D5109AE910 (live=10903) pinned=0
+[str] 000001D5109AE910 len=5
+[gc] collect begin (10903 bytes)
+[gc] roots done (gray=20)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B07E0 (live=10951) pinned=0
+[gc] collect begin (10951 bytes)
+[gc] roots done (gray=19)
+[gc] drain done
+[gc] free kind=1 size=48 at 000001D5109B0960
+[gc] free kind=2 size=29 at 000001D5109AE7D0
+[gc] alloc kind=2 size=29 at 000001D5109AF310 (live=10903) pinned=0
+[str] 000001D5109AF310 len=4
+[gc] collect begin (10903 bytes)
+[gc] roots done (gray=20)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B0F00 (live=10951) pinned=0
+[gc] collect begin (10951 bytes)
+[gc] roots done (gray=19)
+[gc] drain done
+[gc] free kind=1 size=48 at 000001D5109B0F60
+[gc] free kind=2 size=26 at 000001D5109AE820
+[gc] alloc kind=2 size=34 at 000001D5109AF360 (live=10911) pinned=0
+[str] 000001D5109AF360 len=9
+[gc] collect begin (10911 bytes)
+[gc] roots done (gray=20)
+[gc] drain done
+[gc] alloc kind=1 size=48 at 000001D5109B0720 (live=10959) pinned=0

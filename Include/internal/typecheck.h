@@ -21,5 +21,8 @@ typedef struct TypeCheckEnv {
 int TypeCheck_Module(Arena *arena, mod_ty mod, const char *filename);
 int TypeCheck_ModuleEx(Arena *arena, mod_ty mod, const char *filename,
                        const TypeCheckEnv *env);
+/* source를 주면 진단에 원문 줄과 캐럿을 함께 출력한다. */
+int TypeCheck_ModuleWithSource(Arena *arena, mod_ty mod, const char *filename,
+                               const char *source, const TypeCheckEnv *env);
 
 #endif

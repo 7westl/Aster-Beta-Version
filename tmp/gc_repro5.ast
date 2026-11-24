@@ -1,0 +1,2 @@
+import aster.time.DayOfWeek;
+println(DayOfWeek.SUNDAY.ordinal);

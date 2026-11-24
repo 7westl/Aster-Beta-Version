@@ -1,0 +1,2 @@
+import System.stdout.*;
+println(f"n={(99 % (-1))}");

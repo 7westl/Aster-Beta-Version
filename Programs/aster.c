@@ -27,15 +27,17 @@ __declspec(dllimport) unsigned long __stdcall GetModuleFileNameA(void *module, c
 #include "internal/arena.h"
 #include "internal/ast.h"
 #include "internal/formatter.h"
+#include "internal/gc.h"
 #include "internal/interp.h"
 #include "internal/lexer.h"
 #include "internal/linter.h"
+#include "internal/lineedit.h"
 #include "internal/parser.h"
 #include "internal/pkg.h"
 #include "internal/runtime.h"
 #include "internal/typecheck.h"
 
-#define ASTER_VERSION "Beta 1.0.0"
+#define ASTER_VERSION "Beta 2.0.0"
 
 static char *read_stream(FILE *f, size_t *size) {
     size_t cap = 4096;
@@ -89,30 +91,8 @@ static char *read_file(const char *path, size_t *size) {
 }
 
 static void print_error(const char *filename, const char *source, const AsterError *err) {
-    const char *p = source;
-    const char *line_start, *line_end;
-    int line = 1;
-    int i;
-
-    fprintf(stderr, "%s:%d:%d: error: %s\n", filename, err->line, err->col + 1, err->message);
-
-    while (*p && line < err->line) {
-        if (*p == '\n')
-            line++;
-        p++;
-    }
-    line_start = p;
-    line_end = strchr(line_start, '\n');
-    if (!line_end)
-        line_end = line_start + strlen(line_start);
-    fprintf(stderr, "%.*s\n", (int)(line_end - line_start), line_start);
-
-    for (i = 0; i < err->col; i++)
-        fputc(' ', stderr);
-    fputc('^', stderr);
-    for (i = 1; i < err->length; i++)
-        fputc('^', stderr);
-    fputc('\n', stderr);
+    Aster_Diagnostic(stderr, filename, source, err->line, err->col, err->length,
+                     "error", err->message);
 }
 
 static void dump_tokens(const AsterTokenList *list) {
@@ -127,18 +107,83 @@ static void dump_tokens(const AsterTokenList *list) {
     }
 }
 
+/* "Name: message" 형태의 예외 설명을 만든다. 실패하면 NULL. */
+static char *exception_text(Interp *in, RValue *exc) {
+    AsterString *msg;
+    size_t need;
+    char *buf;
+
+    if (!exc || exc->kind != RV_EXC)
+        return NULL;
+    msg = RValue_ToString(in, exc->u.exc->message);
+    need = strlen(exc->u.exc->name) + 2 + (msg ? msg->length : 0) + 1;
+    buf = malloc(need);
+    if (!buf)
+        return NULL;
+    snprintf(buf, need, "%s: %.*s", exc->u.exc->name,
+             msg ? (int)msg->length : 0, msg ? msg->data : "");
+    return buf;
+}
+
+/* 포매터는 FILE*로 쓰므로 임시 파일을 거쳐 문자열로 만든다. */
+static char *format_to_text(mod_ty mod, const char *source, size_t *out_size) {
+    FILE *tmp = tmpfile();
+    long size;
+    char *buf;
+    size_t got;
+
+    if (!tmp)
+        return NULL;
+    Aster_FormatModule(tmp, mod, source);
+    fflush(tmp);
+    if (fseek(tmp, 0, SEEK_END) != 0) {
+        fclose(tmp);
+        return NULL;
+    }
+    size = ftell(tmp);
+    if (size < 0 || fseek(tmp, 0, SEEK_SET) != 0) {
+        fclose(tmp);
+        return NULL;
+    }
+    buf = malloc((size_t)size + 1);
+    if (!buf) {
+        fclose(tmp);
+        return NULL;
+    }
+    got = fread(buf, 1, (size_t)size, tmp);
+    fclose(tmp);
+    buf[got] = 0;
+    *out_size = got;
+    return buf;
+}
+
+static int write_text_file(const char *path, const char *text, size_t size) {
+    FILE *f = fopen(path, "wb");
+
+    if (!f) {
+        fprintf(stderr, "cannot write %s\n", path);
+        return 0;
+    }
+    if (fwrite(text, 1, size, f) != size) {
+        fclose(f);
+        fprintf(stderr, "cannot write %s\n", path);
+        return 0;
+    }
+    if (fclose(f) != 0) {
+        fprintf(stderr, "cannot write %s\n", path);
+        return 0;
+    }
+    return 1;
+}
+
 static void print_uncaught(const char *filename, Interp *in) {
-    RValue *exc = in->exc;
+    char *text;
 
     Interp_PrintTraceback(stderr, in);
-    if (exc && exc->kind == RV_EXC) {
-        fprintf(stderr, "%s:%d: error: %s: ", filename, in->line, exc->u.exc->name);
-        RValue_Print(stderr, exc->u.exc->message, 0);
-        fputc('\n', stderr);
-    }
-    else {
-        fprintf(stderr, "%s:%d: error: Exception\n", filename, in->line);
-    }
+    text = exception_text(in, in->exc);
+    Aster_Diagnostic(stderr, filename, in->source, in->line, in->col, in->span,
+                     "error", text ? text : "Exception");
+    free(text);
 }
 
 static int directory_exists(const char *path) {
@@ -334,6 +379,8 @@ static int repl_command(const char *line) {
         puts("  :help   show this help");
         puts("  :quit   leave the REPL (also Ctrl-D)");
         puts("  multi-line input continues until the block is complete");
+        if (stdin_is_tty())
+            puts("  Tab completes names; Up/Down recalls history");
         return 0;
     }
     printf("unknown command: %s (try :help)\n", line);
@@ -341,17 +388,13 @@ static int repl_command(const char *line) {
 }
 
 static void print_repl_error(Interp *interp) {
-    RValue *exc = interp->exc;
+    char *text;
 
     Interp_PrintTraceback(stderr, interp);
-    if (exc && exc->kind == RV_EXC) {
-        fprintf(stderr, "Error: %s: ", exc->u.exc->name);
-        RValue_Print(stderr, exc->u.exc->message, 0);
-        fputc('\n', stderr);
-    }
-    else {
-        fputs("Error: Exception\n", stderr);
-    }
+    text = exception_text(interp, interp->exc);
+    Aster_Diagnostic(stderr, "<repl>", interp->source, interp->line, interp->col,
+                     interp->span, "error", text ? text : "Exception");
+    free(text);
 }
 
 /* REPL은 줄 끝 세미콜론을 생략할 수 있다: 그 오류면 ';'를 붙여 다시 파싱한다. */
@@ -385,11 +428,101 @@ static mod_ty repl_parse(Interp *interp, const char *buf, size_t len, AsterError
     return NULL;
 }
 
+/* REPL 히스토리는 사용자 홈 디렉터리에 저장한다. */
+static char *repl_history_path(void) {
+    const char *home = getenv("HOME");
+    size_t n;
+    char *path;
+#if defined(_WIN32)
+    if (!home || !home[0])
+        home = getenv("USERPROFILE");
+#endif
+    if (!home || !home[0])
+        return NULL;
+    n = strlen(home) + sizeof "/.aster_repl_history";
+    path = malloc(n);
+    if (!path)
+        return NULL;
+    snprintf(path, n, "%s/.aster_repl_history", home);
+    return path;
+}
+
+static const char *const REPL_WORDS[] = {
+    "package", "import", "from", "as", "fn", "class", "extends", "implements",
+    "interface", "new", "self", "public", "protected", "private", "internal",
+    "if", "else", "while", "for", "break", "continue", "return", "throw",
+    "switch", "case", "default", "try", "catch", "finally", "typedef", "struct",
+    "and", "or", "not", "is", "in", "true", "false", "sizeof", "int", "float",
+    "bool", "str", "null", "void", "super", "exception", "export", "yield",
+    "const", "static", "enum", "assert", "extern", "constructor", "getter",
+    "setter", "property", "when", "vararg", "varkwarg", "readonly",
+    "var", "any", "list", "dict", "set",
+};
+
+static const char *const REPL_COMMANDS[] = {
+    ":clear", ":exit", ":help", ":q", ":quit",
+};
+
+typedef struct {
+    LineEditor *le;
+    const char *prefix;
+    size_t prefix_len;
+} ReplComplete;
+
+static void repl_add_global(void *ctx, const char *name) {
+    ReplComplete *rc = (ReplComplete *)ctx;
+    if (strncmp(name, rc->prefix, rc->prefix_len) == 0)
+        Le_AddCompletion(rc->le, name);
+}
+
+/* 탭 완성: 줄 머리의 ':'는 REPL 명령, 그 밖에는 키워드와 전역 이름. */
+static void repl_complete(void *ctx, LineEditor *le, const char *line,
+                          size_t start, size_t end) {
+    Interp *interp = (Interp *)ctx;
+    ReplComplete rc;
+    size_t i;
+
+    /* 멤버 접근 뒤는 타입 정보가 없어 완성하지 않는다. */
+    if (start > 0) {
+        if (line[start - 1] == '.')
+            return;
+        if (start > 1 && line[start - 2] == '-' && line[start - 1] == '>')
+            return;
+    }
+
+    rc.le = le;
+    rc.prefix = line + start;
+    rc.prefix_len = end - start;
+
+    if (line[start] == ':') {
+        for (i = 0; i < sizeof REPL_COMMANDS / sizeof *REPL_COMMANDS; i++)
+            if (strncmp(REPL_COMMANDS[i], rc.prefix, rc.prefix_len) == 0)
+                Le_AddCompletion(le, REPL_COMMANDS[i]);
+        return;
+    }
+    for (i = 0; i < sizeof REPL_WORDS / sizeof *REPL_WORDS; i++)
+        if (strncmp(REPL_WORDS[i], rc.prefix, rc.prefix_len) == 0)
+            Le_AddCompletion(le, REPL_WORDS[i]);
+    Env_VisitLocal(interp->globals, repl_add_global, &rc);
+}
+
 static int run_repl(Interp *interp) {
     char *buf = NULL;
     size_t len = 0, cap = 0;
     char line[4096];
     int interactive = stdin_is_tty();
+    LineEditor *editor = NULL;
+    char *history_path = NULL;
+
+    if (interactive) {
+        editor = Le_New();
+        if (editor) {
+            history_path = repl_history_path();
+            if (history_path)
+                Le_HistoryLoad(editor, history_path);
+            Le_SetCompleter(editor, repl_complete, interp);
+        }
+    }
 
     if (interactive)
         printf("Aster %s REPL. Type :help for help, :quit to exit.\n", ASTER_VERSION);
@@ -413,14 +546,23 @@ static int run_repl(Interp *interp) {
         size_t i;
         int blank = 1;
 
-        if (interactive) {
-            fputs(len ? "... " : ">>> ", stdout);
-            fflush(stdout);
+        if (editor) {
+            char *text = Le_ReadLine(editor, len ? "... " : ">>> ");
+            if (!text)
+                break;
+            memcpy(line, text, strlen(text) + 1);
+            free(text);
         }
-        if (!fgets(line, sizeof line, stdin)) {
-            if (interactive)
-                fputc('\n', stdout);
-            break;
+        else {
+            if (interactive) {
+                fputs(len ? "... " : ">>> ", stdout);
+                fflush(stdout);
+            }
+            if (!fgets(line, sizeof line, stdin)) {
+                if (interactive)
+                    fputc('\n', stdout);
+                break;
+            }
         }
         if (len == 0) {
             char *cmd = trim_start(line);
@@ -470,11 +612,21 @@ static int run_repl(Interp *interp) {
         interp->exc = NULL;
         interp->ret = NULL;
         interp->nframes = 0;
+        interp->source = buf;
+        interp->line = 1;
+        interp->col = 0;
+        interp->span = 1;
         repl_clear_module_defs(interp, mod);
         if (Interp_RunModule(interp, mod))
             print_repl_error(interp);
         fflush(stdout);
         len = 0;
+    }
+    if (editor) {
+        if (history_path)
+            Le_HistorySave(editor, history_path);
+        free(history_path);
+        Le_Free(editor);
     }
     free(buf);
     return 0;
@@ -483,6 +635,7 @@ static int run_repl(Interp *interp) {
 int main(int argc, char **argv) {
     enum { MODE_RUN, MODE_AST, MODE_TOKENS, MODE_CHECK, MODE_HELP, MODE_VERSION,
            MODE_FORMAT, MODE_LINT, MODE_DEBUG } mode = MODE_RUN;
+    char gc_anchor;
     const char *path = NULL;
     char *source;
     size_t size;
@@ -492,6 +645,12 @@ int main(int argc, char **argv) {
     char **prog_argv = NULL;
     int prog_argc = 0;
     int no_check = 0;
+    int tree_walk = 0;
+    int format_write = 0;
+    int format_check = 0;
+
+    /* GC는 main 프레임의 이 주소를 메인 스택 꼭대기로 삼아 보수적으로 훑는다. */
+    Aster_GC_Init(&gc_anchor);
 
     if (argc > 1 && !strcmp(argv[1], "pkg"))
         return Pkg_Main(argc - 2, argv + 2);
@@ -510,15 +669,21 @@ int main(int argc, char **argv) {
             mode = MODE_CHECK;
         else if (!strcmp(arg, "--format"))
             mode = MODE_FORMAT;
+        else if (!strcmp(arg, "--write"))
+            format_write = 1;
+        else if (!strcmp(arg, "--check-format"))
+            format_check = 1;
         else if (!strcmp(arg, "--lint"))
             mode = MODE_LINT;
         else if (!strcmp(arg, "--debug"))
             mode = MODE_DEBUG;
         else if (!strcmp(arg, "--no-check"))
             no_check = 1;
+        else if (!strcmp(arg, "--tree-walk"))
+            tree_walk = 1;
         else if (arg[0] == '-' && strcmp(arg, "-") != 0) {
             fprintf(stderr, "unknown option: %s\n", arg);
-            fputs("usage: aster [--ast|--tokens|--check|--format|--lint|--debug|--no-check] FILE [ARGS...]\n", stderr);
+            fputs("usage: aster [--ast|--tokens|--check|--format|--write|--check-format|--lint|--debug|--no-check|--tree-walk] FILE [ARGS...]\n", stderr);
             return 2;
         }
         else {
@@ -531,20 +696,35 @@ int main(int argc, char **argv) {
         prog_argc = argc - path_index - 1;
         prog_argv = argv + path_index + 1;
     }
+    if (format_write && format_check) {
+        fputs("aster: --write and --check-format cannot be combined\n", stderr);
+        return 2;
+    }
+    if ((format_write || format_check) && mode != MODE_FORMAT) {
+        fputs("aster: --write and --check-format require --format\n", stderr);
+        return 2;
+    }
+    if (format_write && path && !strcmp(path, "-")) {
+        fputs("aster: --write requires a file (not stdin)\n", stderr);
+        return 2;
+    }
 
     if (mode == MODE_HELP) {
-        puts("usage: aster [--ast|--tokens|--check|--format|--lint|--debug|--no-check] FILE [ARGS...]");
+        puts("usage: aster [--ast|--tokens|--check|--format|--write|--check-format|--lint|--debug|--no-check|--tree-walk] FILE [ARGS...]");
         puts("       aster [--ast|--tokens|--check|--format|--lint] -    (read from stdin)");
         puts("       aster                               (interactive REPL)");
-        puts("       aster pkg <init|add|remove|list|check>   (package manager)");
+        puts("       aster pkg <init|add|install|remove|list|check|publish>  (package manager)");
         puts("  (default)   run a file (type-checks before running)");
         puts("  --ast       print the parsed AST");
         puts("  --tokens    print the token list");
         puts("  --check     type-check only");
-        puts("  --format    print the canonical formatting (comments are dropped)");
+        puts("  --format    print the canonical formatting (comments are preserved)");
+        puts("  --write     with --format: rewrite the file in place");
+        puts("  --check-format  with --format: exit 1 if the file is not formatted");
         puts("  --lint      report unused variables and unreachable code");
         puts("  --debug     run under the statement debugger (s/c/p/b/q)");
         puts("  --no-check  run without type checking");
+        puts("  --tree-walk run without the bytecode VM (AST interpreter only)");
         puts("  --version   print the version");
         return 0;
     }
@@ -564,6 +744,8 @@ int main(int argc, char **argv) {
             interp.argv = prog_argv;
             interp.argc = prog_argc;
             Interp_Init(&interp);
+            if (tree_walk)
+                interp.use_vm = 0;
             Pkg_LoadDeps(arena, interp.base_dir, &interp);
             run_repl(&interp);
             Arena_Free(arena);
@@ -615,7 +797,28 @@ int main(int argc, char **argv) {
             return 0;
         }
         if (mode == MODE_FORMAT) {
-            Aster_FormatModule(stdout, mod);
+            if (format_check || format_write) {
+                size_t text_size = 0;
+                char *text = format_to_text(mod, source, &text_size);
+                int ok = 1;
+                if (!text) {
+                    fputs("cannot format input\n", stderr);
+                    Arena_Free(arena);
+                    free(source);
+                    return 2;
+                }
+                if (format_check && (text_size != size || memcmp(text, source, size) != 0)) {
+                    fprintf(stderr, "%s: needs formatting\n", path);
+                    ok = 0;
+                }
+                if (format_write && !write_text_file(path, text, text_size))
+                    ok = 0;
+                free(text);
+                Arena_Free(arena);
+                free(source);
+                return ok ? 0 : (format_check ? 1 : 2);
+            }
+            Aster_FormatModule(stdout, mod, source);
             fflush(stdout);
             Arena_Free(arena);
             free(source);
@@ -631,11 +834,14 @@ int main(int argc, char **argv) {
 
         memset(&interp, 0, sizeof(interp));
         interp.arena = arena;
+        interp.source = source;
         interp.base_dir = strcmp(path, "-") == 0 ? "." : dir_of_file(path, arena);
         interp.stdlib_dir = find_stdlib_dir(arena, argv[0]);
         interp.argv = prog_argv;
         interp.argc = prog_argc;
         Interp_Init(&interp);
+        if (tree_walk)
+            interp.use_vm = 0;
         Pkg_LoadDeps(arena, interp.base_dir, &interp);
 
         tenv.base_dir = interp.base_dir;
@@ -644,12 +850,14 @@ int main(int argc, char **argv) {
         tenv.nmodule_dirs = interp.nmodule_dirs;
 
         if (mode == MODE_CHECK) {
-            check_failed = TypeCheck_ModuleEx(arena, mod, path, &tenv) != 0;
+            check_failed =
+                TypeCheck_ModuleWithSource(arena, mod, path, source, &tenv) != 0;
             Arena_Free(arena);
             free(source);
             return check_failed ? 1 : 0;
         }
-        if (!no_check && TypeCheck_ModuleEx(arena, mod, path, &tenv)) {
+        if (!no_check &&
+            TypeCheck_ModuleWithSource(arena, mod, path, source, &tenv)) {
             Arena_Free(arena);
             free(source);
             return 1;

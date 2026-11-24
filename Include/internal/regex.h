@@ -48,4 +48,7 @@ void Regex_ReleaseMatch(Interp *in, int id);
 /* 정규식 내부 모듈(aster.util.regex.internal)의 함수를 등록한다. */
 void Regex_Install(Interp *in);
 
+/* 매치 결과가 붙잡고 있는 문자열을 GC 루트로 표시한다 (gc.c에서 호출). */
+void Regex_MarkInterp(Interp *in);
+
 #endif

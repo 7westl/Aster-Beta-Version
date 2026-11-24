@@ -1,0 +1,3 @@
+import System.stdout.*;
+println(f"n={0}");
+println("plain");

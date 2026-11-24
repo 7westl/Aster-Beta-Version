@@ -12,6 +12,7 @@
 #include <string.h>
 #include <time.h>
 #include "internal/runtime.h"
+#include "internal/gc.h"
 #include "internal/regex.h"
 
 #if !defined(_WIN32)
@@ -41,6 +42,65 @@ static void *xrealloc(void *p, size_t n) {
         abort();
     }
     return q;
+}
+
+/* source에서 1부터 센 line번째 줄의 시작과 끝(\n 앞)을 돌려준다. */
+static const char *diagnostic_line(const char *source, int line, const char **out_end) {
+    const char *p = source;
+    int current = 1;
+
+    if ((unsigned char)p[0] == 0xEF && (unsigned char)p[1] == 0xBB &&
+        (unsigned char)p[2] == 0xBF)
+        p += 3;   /* BOM은 열 계산에서 제외한다. */
+    while (current < line && *p) {
+        if (*p == '\n')
+            current++;
+        p++;
+    }
+    *out_end = p;
+    while (**out_end && **out_end != '\n')
+        (*out_end)++;
+    return p;
+}
+
+static void diagnostic_caret(FILE *out, const char *start, const char *end,
+                             int col, int length) {
+    const char *p = start;
+    int i;
+    size_t advance;
+
+    /* 탭은 탭으로, 나머지는 공백으로 채워 캐럿을 원문 열에 맞춘다. */
+    for (i = 0; i < col && p < end; i++) {
+        uint32_t cp = Aster_UTF8_Decode(p, (size_t)(end - p), &advance);
+        fputc(cp == '\t' ? '\t' : ' ', out);
+        p += advance;
+    }
+    for (; i < col; i++)
+        fputc(' ', out);
+    if (length < 1)
+        length = 1;
+    for (i = 0; i < length; i++)
+        fputc('^', out);
+    fputc('\n', out);
+}
+
+void Aster_Diagnostic(FILE *out, const char *filename, const char *source,
+                      int line, int col, int length, const char *kind,
+                      const char *message) {
+    if (col < 0)
+        col = 0;
+    fprintf(out, "%s:%d:%d: %s: %s\n", filename ? filename : "<input>",
+            line < 1 ? 1 : line, col + 1, kind ? kind : "error",
+            message ? message : "");
+
+    if (source && line >= 1) {
+        const char *end;
+        const char *start = diagnostic_line(source, line, &end);
+        while (end > start && end[-1] == '\r')
+            end--;
+        fprintf(out, "%.*s\n", (int)(end - start), start);
+        diagnostic_caret(out, start, end, col, length);
+    }
 }
 
 /* ---- 값 생성 ---- */
@@ -73,7 +133,8 @@ static void value_cache_init(void) {
 }
 
 RValue *RValue_New(Interp *in, RKind kind) {
-    RValue *v = Arena_AllocNoZero(in->arena, sizeof(RValue));
+    RValue *v = Aster_GC_Alloc(sizeof(RValue), GK_RVALUE);
+    (void)in;
     v->kind = kind;
     return v;
 }
@@ -146,7 +207,7 @@ RValue *RValue_Ptr(Interp *in, RValue **slot, typeref_ty ty) {
 }
 
 RValue *RValue_Exception(Interp *in, const char *name, RValue *message) {
-    AstException *e = Arena_Alloc(in->arena, sizeof(AstException));
+    AstException *e = Aster_GC_Alloc(sizeof(AstException), GK_EXCEPTION);
     RValue *v = RValue_New(in, RV_EXC);
     e->name = name;
     e->message = message ? message : RValue_Null(in);
@@ -209,7 +270,7 @@ RValue *RValue_Module(Interp *in, AstModule *module) {
 }
 
 RValue *RValue_Super(Interp *in, AstClass *owner, RValue *self) {
-    AsterSuper *s = Arena_Alloc(in->arena, sizeof(AsterSuper));
+    AsterSuper *s = Aster_GC_Alloc(sizeof(AsterSuper), GK_SUPER);
     RValue *v = RValue_New(in, RV_SUPER);
     s->owner = owner;
     s->self = self;
@@ -231,7 +292,7 @@ RValue *RValue_EnumPayload(Interp *in, AstEnumType *type, const char *name, size
                            RValue **args, size_t nargs) {
     RValue *v = RValue_Enum(in, type, name, index);
     if (nargs) {
-        RValue **payload = Arena_Alloc(in->arena, nargs * sizeof(RValue *));
+        RValue **payload = Aster_GC_Alloc(nargs * sizeof(RValue *), GK_PTR_ARRAY);
         size_t i;
         for (i = 0; i < nargs; i++)
             payload[i] = RValue_Copy(in, args[i]);
@@ -303,8 +364,8 @@ void Interp_PrintTraceback(FILE *out, Interp *in) {
 }
 
 RValue *RValue_Generator(Interp *in, AstFn *fn, Env *body_env, RValue *self) {
-    AstGenerator *gen = Arena_Alloc(in->arena, sizeof(AstGenerator));
-    Interp *gin = Arena_Alloc(in->arena, sizeof(Interp));
+    AstGenerator *gen = Aster_GC_Alloc(sizeof(AstGenerator), GK_GENERATOR);
+    Interp *gin = Aster_GC_Alloc(sizeof(Interp), GK_INTERP);
     RValue *v = RValue_New(in, RV_GENERATOR);
 
     *gin = *in;
@@ -332,6 +393,7 @@ RValue *RValue_Generator(Interp *in, AstFn *fn, Env *body_env, RValue *self) {
     gen->caller_ctx = NULL;
     gen->stack = NULL;
     gen->caller_gen = NULL;
+    gen->gc_stack = NULL;
     v->u.gen = gen;
     return v;
 }
@@ -339,15 +401,18 @@ RValue *RValue_Generator(Interp *in, AstFn *fn, Env *body_env, RValue *self) {
 /* ---- 컬렉션 ---- */
 
 AsterList *List_New(Interp *in) {
-    return Arena_Alloc(in->arena, sizeof(AsterList));
+    (void)in;
+    return Aster_GC_Alloc(sizeof(AsterList), GK_LIST);
 }
 
 static void grow_items(Interp *in, RValue ***items, size_t *cap, size_t need) {
-    size_t ncap = *cap ? *cap : 8;
+    size_t oldcap = *cap;
+    size_t ncap = oldcap ? oldcap : 8;
     while (ncap < need)
         ncap *= 2;
     (void)in;
-    *items = xrealloc(*items, ncap * sizeof(RValue *));
+    *items = Aster_GC_Grow(*items, oldcap * sizeof(RValue *),
+                           ncap * sizeof(RValue *), GK_PTR_ARRAY);
     *cap = ncap;
 }
 
@@ -377,20 +442,23 @@ void List_RemoveAt(AsterList *list, size_t index) {
 }
 
 AsterTuple *Tuple_New(Interp *in, size_t len) {
-    AsterTuple *tuple = Arena_Alloc(in->arena, sizeof(AsterTuple));
+    AsterTuple *tuple = Aster_GC_Alloc(sizeof(AsterTuple), GK_TUPLE);
+    (void)in;
     tuple->len = len;
     if (len)
-        tuple->items = Arena_Alloc(in->arena, len * sizeof(RValue *));
+        tuple->items = Aster_GC_Alloc(len * sizeof(RValue *), GK_PTR_ARRAY);
     return tuple;
 }
 
 AsterDict *Dict_New(Interp *in) {
-    return Arena_Alloc(in->arena, sizeof(AsterDict));
+    (void)in;
+    return Aster_GC_Alloc(sizeof(AsterDict), GK_DICT);
 }
 
 static void dict_alloc_index(AsterDict *dict, size_t cap) {
     size_t i;
-    dict->index = xrealloc(dict->index, cap * sizeof(long));
+    dict->index = Aster_GC_Grow(dict->index, dict->icap * sizeof(long),
+                                cap * sizeof(long), GK_RAW_ARRAY);
     memset(dict->index, 0, cap * sizeof(long));
     dict->icap = cap;
     for (i = 0; i < dict->len; i++) {
@@ -471,7 +539,10 @@ int Dict_Set(Interp *in, AsterDict *dict, RValue *key, RValue *value, int *ok) {
     }
     if (dict->len == dict->cap) {
         size_t ncap = dict->cap ? dict->cap * 2 : 8;
-        dict->entries = xrealloc(dict->entries, ncap * sizeof(AsterDictEntry));
+        dict->entries = Aster_GC_Grow(dict->entries,
+                                      dict->cap * sizeof(AsterDictEntry),
+                                      ncap * sizeof(AsterDictEntry),
+                                      GK_DICT_ENTRIES);
         dict->cap = ncap;
     }
     dict->entries[dict->len].key = key;
@@ -493,12 +564,14 @@ void Dict_RemoveAt(AsterDict *dict, size_t index) {
 }
 
 AsterSet *Set_New(Interp *in) {
-    return Arena_Alloc(in->arena, sizeof(AsterSet));
+    (void)in;
+    return Aster_GC_Alloc(sizeof(AsterSet), GK_SET);
 }
 
 static void set_alloc_index(AsterSet *set, size_t cap) {
     size_t i;
-    set->index = xrealloc(set->index, cap * sizeof(long));
+    set->index = Aster_GC_Grow(set->index, set->icap * sizeof(long),
+                               cap * sizeof(long), GK_RAW_ARRAY);
     memset(set->index, 0, cap * sizeof(long));
     set->icap = cap;
     for (i = 0; i < set->len; i++) {
@@ -559,8 +632,10 @@ int Set_Add(Interp *in, AsterSet *set, RValue *value, int *ok) {
         return 1;
     if (set->len == set->cap) {
         size_t ncap = set->cap ? set->cap * 2 : 8;
-        set->items = xrealloc(set->items, ncap * sizeof(RValue *));
-        set->hashes = xrealloc(set->hashes, ncap * sizeof(uint64_t));
+        set->items = Aster_GC_Grow(set->items, set->cap * sizeof(RValue *),
+                                   ncap * sizeof(RValue *), GK_PTR_ARRAY);
+        set->hashes = Aster_GC_Grow(set->hashes, set->cap * sizeof(uint64_t),
+                                    ncap * sizeof(uint64_t), GK_RAW_ARRAY);
         set->cap = ncap;
     }
     h = RValue_Hash(value);
@@ -1072,8 +1147,11 @@ static void env_index_insert(Env *env, Binding *b) {
 static void env_index_build(Interp *in, Env *env, size_t cap) {
     EnvIndex *ix = env->idx;
     Binding *b;
+    (void)in;
+    ix->slots = Aster_GC_Grow(ix->slots, ix->icap * sizeof(Binding *),
+                              cap * sizeof(Binding *), GK_RAW_ARRAY);
+    memset(ix->slots, 0, cap * sizeof(Binding *));
     ix->icap = cap;
-    ix->slots = Arena_Alloc(in->arena, cap * sizeof(Binding *));
     /* vars는 최신이 앞이다. 앞에서부터 넣고 중복은 처음 것(최신)을 남긴다. */
     for (b = env->vars; b; b = b->next) {
         size_t mask = cap - 1;
@@ -1103,7 +1181,7 @@ static void env_link(Interp *in, Env *env, Binding *b) {
     }
     else if (env->count >= ENV_INDEX_MIN) {
         if (!env->idx)
-            env->idx = Arena_Alloc(in->arena, sizeof(EnvIndex));
+            env->idx = Aster_GC_Alloc(sizeof(EnvIndex), GK_PTR_ARRAY);
         env_index_build(in, env, 2 * ENV_INDEX_MIN);
     }
 }
@@ -1133,7 +1211,8 @@ static Binding *env_find(Env *env, const char *name, uint32_t hash) {
 }
 
 Env *Env_New(Interp *in, Env *parent) {
-    Env *env = Arena_AllocNoZero(in->arena, sizeof(Env));
+    Env *env = Aster_GC_Alloc(sizeof(Env), GK_ENV);
+    (void)in;
     env->parent = parent;
     env->vars = NULL;
     env->idx = NULL;
@@ -1146,7 +1225,8 @@ Env *Env_New(Interp *in, Env *parent) {
 }
 
 Env *Env_NewCall(Interp *in, Env *parent, size_t nspare) {
-    char *p = Arena_AllocNoZero(in->arena, sizeof(Env) + nspare * sizeof(Binding));
+    char *p = Aster_GC_Alloc(sizeof(Env) + nspare * sizeof(Binding), GK_ENV);
+    (void)in;
     Env *env = (Env *)p;
     env->parent = parent;
     env->vars = NULL;
@@ -1163,7 +1243,8 @@ Env *Env_NewCall(Interp *in, Env *parent, size_t nspare) {
 #define ENV_BLOCK_SPARE 8
 
 static Env *env_new_block(Interp *in, Env *parent) {
-    char *p = Arena_AllocNoZero(in->arena, sizeof(Env) + ENV_BLOCK_SPARE * sizeof(Binding));
+    char *p = Aster_GC_Alloc(sizeof(Env) + ENV_BLOCK_SPARE * sizeof(Binding), GK_ENV);
+    (void)in;
     Env *env = (Env *)p;
     env->parent = parent;
     env->vars = NULL;
@@ -1255,11 +1336,12 @@ RValue **Env_LookupCellFlags(Env *env, const char *name, int *is_const) {
 }
 
 static Binding *env_binding_alloc(Interp *in, Env *env) {
+    (void)in;
     if (env->nspare) {
         env->nspare--;
         return env->spare++;
     }
-    return Arena_AllocNoZero(in->arena, sizeof(Binding));
+    return Aster_GC_Alloc(sizeof(Binding), GK_BINDING);
 }
 
 static void env_define(Interp *in, Env *env, const char *name, RValue *value, int is_const) {
@@ -1309,6 +1391,12 @@ int Env_HasLocal(Env *env, const char *name) {
     return env_find(env, name, hash_name(name)) != NULL;
 }
 
+void Env_VisitLocal(Env *env, EnvVisitFn fn, void *ctx) {
+    Binding *b;
+    for (b = env->vars; b; b = b->next)
+        fn(ctx, b->name);
+}
+
 void Env_RemoveLocal(Interp *in, Env *env, const char *name) {
     uint32_t hash = hash_name(name);
     Binding **link = &env->vars;
@@ -1356,12 +1444,14 @@ static void fill_fields(Interp *in, AstClass *cls, InstField *fields, size_t *in
 }
 
 AstInstance *Instance_New(Interp *in, AstClass *cls) {
-    AstInstance *obj = Arena_Alloc(in->arena, sizeof(AstInstance));
+    AstInstance *obj = Aster_GC_Alloc(sizeof(AstInstance), GK_INSTANCE);
     size_t index = 0;
+    (void)in;
 
     obj->cls = cls;
     obj->nfields = Class_FieldCount(cls);
-    obj->fields = obj->nfields ? Arena_Alloc(in->arena, obj->nfields * sizeof(InstField)) : NULL;
+    obj->fields = obj->nfields ? Aster_GC_Alloc(obj->nfields * sizeof(InstField),
+                                                GK_PTR_ARRAY) : NULL;
     fill_fields(in, cls, obj->fields, &index);
     return obj;
 }
@@ -1430,9 +1520,11 @@ int StructValue_FieldIndex(AstStructType *type, const char *name) {
 static RValue *default_for_type_depth(Interp *in, Env *env, typeref_ty ty, int depth);
 
 AstStructValue *StructValue_New(Interp *in, AstStructType *type) {
-    AstStructValue *stv = Arena_Alloc(in->arena, sizeof(AstStructValue));
+    AstStructValue *stv = Aster_GC_Alloc(sizeof(AstStructValue), GK_STRUCTVALUE);
+    (void)in;
     stv->type = type;
-    stv->cells = type->nfields ? Arena_Alloc(in->arena, type->nfields * sizeof(RValue *)) : NULL;
+    stv->cells = type->nfields ? Aster_GC_Alloc(type->nfields * sizeof(RValue *),
+                                                GK_PTR_ARRAY) : NULL;
     return stv;
 }
 
@@ -2678,7 +2770,8 @@ RValue *RT_ThrowValue(Interp *in, const char *name, const char *fmt, ...) {
 /* ---- 내장 함수 ---- */
 
 AstBuiltin *Builtin_New(Interp *in, const char *name, BuiltinFn fn) {
-    AstBuiltin *b = Arena_Alloc(in->arena, sizeof(AstBuiltin));
+    AstBuiltin *b = Aster_GC_Alloc(sizeof(AstBuiltin), GK_BUILTIN);
+    (void)in;
     b->name = name;
     b->fn = fn;
     return b;
@@ -2787,7 +2880,12 @@ static AstFn *make_builtin_method(Interp *in, const char *name, BuiltinFn fn) {
     return f;
 }
 
-/* iterable을 값 배열로 펼친다. 반환 배열은 호출자가 free한다. */
+/* 임시 배열은 GC가 관리하므로 명시적으로 해제하지 않는다. */
+static void temp_release(void *p) {
+    (void)p;
+}
+
+/* iterable을 값 배열로 펼친다. 반환 배열은 GC가 관리한다. */
 static int iter_values(Interp *in, RValue *src, RValue ***out, size_t *nout) {
     RValue **items = NULL;
     size_t n = 0;
@@ -2802,33 +2900,33 @@ static int iter_values(Interp *in, RValue *src, RValue ***out, size_t *nout) {
     switch (src->kind) {
     case RV_LIST:
         n = src->u.list->len;
-        items = xrealloc(NULL, (n ? n : 1) * sizeof(RValue *));
+        items = Aster_GC_Alloc((n ? n : 1) * sizeof(RValue *), GK_PTR_ARRAY);
         for (i = 0; i < n; i++)
             items[i] = src->u.list->items[i];
         break;
     case RV_TUPLE:
         n = src->u.tuple->len;
-        items = xrealloc(NULL, (n ? n : 1) * sizeof(RValue *));
+        items = Aster_GC_Alloc((n ? n : 1) * sizeof(RValue *), GK_PTR_ARRAY);
         for (i = 0; i < n; i++)
             items[i] = src->u.tuple->items[i];
         break;
     case RV_SET:
     case RV_FROZENSET:
         n = src->u.set->len;
-        items = xrealloc(NULL, (n ? n : 1) * sizeof(RValue *));
+        items = Aster_GC_Alloc((n ? n : 1) * sizeof(RValue *), GK_PTR_ARRAY);
         for (i = 0; i < n; i++)
             items[i] = src->u.set->items[i];
         break;
     case RV_DICT:
         n = src->u.dict->len;
-        items = xrealloc(NULL, (n ? n : 1) * sizeof(RValue *));
+        items = Aster_GC_Alloc((n ? n : 1) * sizeof(RValue *), GK_PTR_ARRAY);
         for (i = 0; i < n; i++)
             items[i] = src->u.dict->entries[i].key;
         break;
     case RV_STR: {
         size_t off = 0;
         n = src->u.s->cp_length;
-        items = xrealloc(NULL, (n ? n : 1) * sizeof(RValue *));
+        items = Aster_GC_Alloc((n ? n : 1) * sizeof(RValue *), GK_PTR_ARRAY);
         for (i = 0; i < n; i++) {
             size_t adv = 1;
             Aster_UTF8_Decode(src->u.s->data + off, src->u.s->length - off, &adv);
@@ -2846,15 +2944,15 @@ static int iter_values(Interp *in, RValue *src, RValue ***out, size_t *nout) {
         for (;;) {
             int ended = 0, ok = 1;
             RValue *v = Iter_Next(in, &cur, &ended, &ok);
-            if (!ok) {
-                free(items);
+            if (!ok)
                 return 0;
-            }
             if (ended)
                 break;
             if (n == cap) {
+                size_t oldcap = cap;
                 cap = cap ? cap * 2 : 8;
-                items = xrealloc(items, cap * sizeof(RValue *));
+                items = Aster_GC_Grow(items, oldcap * sizeof(RValue *),
+                                      cap * sizeof(RValue *), GK_PTR_ARRAY);
             }
             items[n++] = v;
         }
@@ -2887,7 +2985,7 @@ static RValue *sequence_from_args(Interp *in, RValue **args, size_t nargs, int a
         size_t i;
         for (i = 0; i < n; i++)
             tuple->items[i] = RValue_Copy(in, items[i]);
-        free(items);
+        temp_release(items);
         return RValue_Tuple(in, tuple);
     }
     else {
@@ -2895,7 +2993,7 @@ static RValue *sequence_from_args(Interp *in, RValue **args, size_t nargs, int a
         size_t i;
         for (i = 0; i < n; i++)
             List_Append(in, list, RValue_Copy(in, items[i]));
-        free(items);
+        temp_release(items);
         return RValue_List(in, list);
     }
 }
@@ -3034,11 +3132,11 @@ static RValue *bi_sum(Interp *in, RValue *self, RValue **args, size_t nargs) {
         acc = nargs == 2 ? RValue_Copy(in, args[1]) : RValue_Int(in, 0);
         for (i = 0; i < n; i++) {
             if (!numeric_add(in, acc, items[i], &acc)) {
-                free(items);
+                temp_release(items);
                 return NULL;
             }
         }
-        free(items);
+        temp_release(items);
         return acc;
     }
     acc = RValue_Copy(in, args[0]);
@@ -3061,7 +3159,7 @@ static RValue *min_or_max(Interp *in, RValue **args, size_t nargs, int want_max)
         if (!iter_values(in, args[0], &items, &n))
             return NULL;
         if (n == 0) {
-            free(items);
+            temp_release(items);
             return RT_ThrowValue(in, "ValueError",
                                  want_max ? "max() arg is an empty sequence"
                                           : "min() arg is an empty sequence");
@@ -3077,13 +3175,13 @@ static RValue *min_or_max(Interp *in, RValue **args, size_t nargs, int want_max)
         RValue *v = items ? items[i] : args[i];
         int cmp;
         if (!RValue_Compare(in, v, best, &cmp)) {
-            free(items);
+            temp_release(items);
             return NULL;
         }
         if (want_max ? cmp > 0 : cmp < 0)
             best = v;
     }
-    free(items);
+    temp_release(items);
     return best;
 }
 
@@ -3107,11 +3205,11 @@ static RValue *bi_all(Interp *in, RValue *self, RValue **args, size_t nargs) {
         return NULL;
     for (i = 0; i < n; i++) {
         if (!RValue_Truthy(items[i])) {
-            free(items);
+            temp_release(items);
             return RValue_Bool(in, 0);
         }
     }
-    free(items);
+    temp_release(items);
     return RValue_Bool(in, 1);
 }
 
@@ -3125,11 +3223,11 @@ static RValue *bi_any(Interp *in, RValue *self, RValue **args, size_t nargs) {
         return NULL;
     for (i = 0; i < n; i++) {
         if (RValue_Truthy(items[i])) {
-            free(items);
+            temp_release(items);
             return RValue_Bool(in, 1);
         }
     }
-    free(items);
+    temp_release(items);
     return RValue_Bool(in, 0);
 }
 
@@ -3141,7 +3239,7 @@ static RValue *bi_zip(Interp *in, RValue *self, RValue **args, size_t nargs) {
     (void)self;
     if (nargs == 0)
         return RT_ThrowValue(in, "TypeError", "zip requires at least 1 argument");
-    seqs = Arena_Alloc(in->arena, nargs * sizeof(RValue **));
+    seqs = Aster_GC_Alloc(nargs * sizeof(RValue **), GK_PTR_ARRAY);
     lens = Arena_Alloc(in->arena, nargs * sizeof(size_t));
     for (i = 0; i < nargs; i++) {
         if (!iter_values(in, args[i], &seqs[i], &lens[i]))
@@ -3173,7 +3271,7 @@ static RValue *bi_enumerate(Interp *in, RValue *self, RValue **args, size_t narg
     if (nargs == 2) {
         start = RValue_AsInt(in, args[1], &ok);
         if (!ok) {
-            free(items);
+            temp_release(items);
             return NULL;
         }
     }
@@ -3184,7 +3282,7 @@ static RValue *bi_enumerate(Interp *in, RValue *self, RValue **args, size_t narg
         tuple->items[1] = RValue_Copy(in, items[i]);
         List_Append(in, out, RValue_Tuple(in, tuple));
     }
-    free(items);
+    temp_release(items);
     return RValue_List(in, out);
 }
 
@@ -3201,7 +3299,7 @@ static RValue *bi_sorted(Interp *in, RValue *self, RValue **args, size_t nargs) 
         return NULL;
     if (nargs == 2 && args[1]->kind != RV_NULL) {
         if (!is_callable_value(args[1])) {
-            free(items);
+            temp_release(items);
             return RT_ThrowValue(in, "TypeError", "sorted() expects a function as key");
         }
         key_fn = args[1];
@@ -3209,9 +3307,9 @@ static RValue *bi_sorted(Interp *in, RValue *self, RValue **args, size_t nargs) 
     out = List_New(in);
     for (i = 0; i < n; i++)
         List_Append(in, out, RValue_Copy(in, items[i]));
-    free(items);
+    temp_release(items);
     if (key_fn && out->len) {
-        keys = Arena_Alloc(in->arena, out->len * sizeof(RValue *));
+        keys = Aster_GC_Alloc(out->len * sizeof(RValue *), GK_PTR_ARRAY);
         for (i = 0; i < out->len; i++) {
             keys[i] = Interp_CallValue(in, key_fn, &out->items[i], 1);
             if (!keys[i])
@@ -3532,11 +3630,11 @@ static RValue *bi_set(Interp *in, RValue *self, RValue **args, size_t nargs) {
     set = Set_New(in);
     for (i = 0; i < n; i++) {
         if (!Set_Add(in, set, RValue_Copy(in, items[i]), &ok)) {
-            free(items);
+            temp_release(items);
             return NULL;
         }
     }
-    free(items);
+    temp_release(items);
     return RValue_Set(in, set);
 }
 
@@ -3572,12 +3670,12 @@ static RValue *bi_dict(Interp *in, RValue *self, RValue **args, size_t nargs) {
             for (i = 0; i < n; i++) {
                 RValue *pair = items[i];
                 if (!pair || (pair->kind != RV_LIST && pair->kind != RV_TUPLE)) {
-                    free(items);
+                    temp_release(items);
                     return RT_ThrowValue(in, "TypeError",
                                          "dict requires an iterable of (key, value) pairs");
                 }
                 if ((pair->kind == RV_LIST ? pair->u.list->len : pair->u.tuple->len) != 2) {
-                    free(items);
+                    temp_release(items);
                     return RT_ThrowValue(in, "ValueError",
                                          "dict element does not have length 2");
                 }
@@ -3589,11 +3687,11 @@ static RValue *bi_dict(Interp *in, RValue *self, RValue **args, size_t nargs) {
                                                   ? pair->u.list->items[1]
                                                   : pair->u.tuple->items[1]),
                               &ok)) {
-                    free(items);
+                    temp_release(items);
                     return NULL;
                 }
             }
-            free(items);
+            temp_release(items);
         }
     }
     return RValue_Dict(in, dict);
@@ -3638,7 +3736,7 @@ static RValue *list_m_extend(Interp *in, RValue *self, RValue **args, size_t nar
         return NULL;
     for (i = 0; i < n; i++)
         List_Append(in, self->u.list, RValue_Copy(in, items[i]));
-    free(items);
+    temp_release(items);
     return RValue_Null(in);
 }
 
@@ -3803,7 +3901,7 @@ static RValue *list_m_sort(Interp *in, RValue *self, RValue **args, size_t nargs
         if (!args[0] || (args[0]->kind != RV_FUNC && args[0]->kind != RV_BUILTIN &&
                          args[0]->kind != RV_OVERLOAD))
             return RT_ThrowValue(in, "TypeError", "sort() expects a function as key");
-        keys = list->len ? Arena_Alloc(in->arena, list->len * sizeof(RValue *)) : NULL;
+        keys = list->len ? Aster_GC_Alloc(list->len * sizeof(RValue *), GK_PTR_ARRAY) : NULL;
         for (i = 0; i < list->len; i++) {
             keys[i] = Interp_CallValue(in, args[0], &list->items[i], 1);
             if (!keys[i])
@@ -3981,7 +4079,7 @@ static RValue *dict_m_update(Interp *in, RValue *self, RValue **args, size_t nar
             size_t plen = pair && pair->kind == RV_LIST ? pair->u.list->len
                            : pair && pair->kind == RV_TUPLE ? pair->u.tuple->len : 0;
             if (plen != 2) {
-                free(items);
+                temp_release(items);
                 return RT_ThrowValue(in, "ValueError",
                                      "update() requires (key, value) pairs");
             }
@@ -3992,11 +4090,11 @@ static RValue *dict_m_update(Interp *in, RValue *self, RValue **args, size_t nar
                           RValue_Copy(in, pair->kind == RV_LIST
                                               ? pair->u.list->items[1]
                                               : pair->u.tuple->items[1]), &ok)) {
-                free(items);
+                temp_release(items);
                 return NULL;
             }
         }
-        free(items);
+        temp_release(items);
     }
     return RValue_Null(in);
 }
@@ -4106,11 +4204,11 @@ static AsterSet *set_like_from(Interp *in, RValue *src, int *ok) {
         return NULL;
     for (i = 0; i < n; i++) {
         if (!Set_Add(in, set, RValue_Copy(in, items[i]), &add_ok)) {
-            free(items);
+            temp_release(items);
             return NULL;
         }
     }
-    free(items);
+    temp_release(items);
     *ok = 1;
     return set;
 }
@@ -4360,7 +4458,7 @@ static RValue *str_m_join(Interp *in, RValue *self, RValue **args, size_t nargs)
         return NULL;
     for (i = 0; i < n; i++) {
         if (!items[i] || items[i]->kind != RV_STR) {
-            free(items);
+            temp_release(items);
             free(b.data);
             return RT_ThrowValue(in, "TypeError", "join() elements must be strings");
         }
@@ -4368,7 +4466,7 @@ static RValue *str_m_join(Interp *in, RValue *self, RValue **args, size_t nargs)
             buf_write(&b, self->u.s->data, self->u.s->length);
         buf_write(&b, items[i]->u.s->data, items[i]->u.s->length);
     }
-    free(items);
+    temp_release(items);
     s = AsterString_FromUTF8(b.data ? b.data : "", b.len);
     free(b.data);
     return RValue_Str(in, s);
@@ -4989,26 +5087,61 @@ static RValue *bi_range(Interp *in, RValue *self, RValue **args, size_t nargs) {
 
 /* ---- 시스템/입출력 (Java 스타일) ---- */
 
+#if defined(_WIN32)
+typedef void *WinStdinHandle;
+__declspec(dllimport) WinStdinHandle __stdcall GetStdHandle(unsigned long n);
+__declspec(dllimport) int __stdcall GetConsoleMode(WinStdinHandle h, unsigned long *mode);
+__declspec(dllimport) int __stdcall SetConsoleMode(WinStdinHandle h, unsigned long mode);
+
+#define WIN_STD_INPUT_HANDLE ((unsigned long)-10)
+#define WIN_ENABLE_PROCESSED_INPUT 0x0001
+#define WIN_ENABLE_LINE_INPUT 0x0002
+#define WIN_ENABLE_ECHO_INPUT 0x0004
+#define WIN_ENABLE_VT_INPUT 0x0200
+
+/* Scanner는 줄 단위 입력을 기대한다. 중단된 REPL이 남긴 raw 모드나 VT 입력
+   모드에서는 Enter가 '\r'만 오거나 에코가 없어 입력이 멈춘 것처럼 보이므로,
+   콘솔 입력을 표준 라인 모드로 되돌린다. */
+static void ensure_line_input(void) {
+    WinStdinHandle h = GetStdHandle(WIN_STD_INPUT_HANDLE);
+    unsigned long mode;
+
+    if (!h || h == (WinStdinHandle)(intptr_t)-1 || !GetConsoleMode(h, &mode))
+        return;   /* 파이프/파일 입력은 건드리지 않는다 */
+    mode |= WIN_ENABLE_LINE_INPUT | WIN_ENABLE_ECHO_INPUT | WIN_ENABLE_PROCESSED_INPUT;
+    mode &= ~WIN_ENABLE_VT_INPUT;
+    SetConsoleMode(h, mode);
+}
+#else
+static void ensure_line_input(void) {}
+#endif
+
 static char *read_stdin_line(int *eof) {
     size_t cap = 128, len = 0;
     char *buf = xrealloc(NULL, cap);
     int c = EOF;
 
+    ensure_line_input();
     *eof = 0;
-    while ((c = fgetc(stdin)) != EOF && c != '\n') {
+    /* VT 입력 모드(ConPTY·Windows Terminal·VS Code)에서는 Enter가 '\n' 없이
+       '\r'만 온다. 두 종료 문자를 모두 줄 끝으로 보고, CRLF는 한 번만 센다. */
+    while ((c = fgetc(stdin)) != EOF && c != '\n' && c != '\r') {
         if (len + 1 >= cap) {
             cap *= 2;
             buf = xrealloc(buf, cap);
         }
         buf[len++] = (char)c;
     }
+    if (c == '\r') {
+        int next = fgetc(stdin);
+        if (next != '\n' && next != EOF)
+            ungetc(next, stdin);
+    }
     if (c == EOF && len == 0) {
         free(buf);
         *eof = 1;
         return NULL;
     }
-    if (len > 0 && buf[len - 1] == '\r')
-        len--;
     buf[len] = 0;
     return buf;
 }
@@ -5849,9 +5982,12 @@ void Interp_Init(Interp *in) {
     AsterList *arglist;
     size_t i;
 
+    Aster_GC_AddInterp(in);
     in->globals = Env_New(in, NULL);
     in->sig = SIG_OK;
+    in->use_vm = getenv("ASTER_TREE_WALK") ? 0 : 1;
     in->recursion_limit = ASTER_DEFAULT_RECURSION_LIMIT;
+    Interp_PrepareStackGuard(in, 0);
 
     Env_Define(in, in->globals, "memset", RValue_Builtin(in, Builtin_New(in, "memset", bi_memset)));
     Env_Define(in, in->globals, "len", RValue_Builtin(in, Builtin_New(in, "len", bi_len)));

@@ -1,0 +1,5 @@
+import System.stdout.*;
+println(f"abc");
+str s = "a";
+println(s + "b");
+println("x");

@@ -223,7 +223,10 @@ case Repeat_kind:
 
 `--format`은 AST를 다시 소스로 출력하므로 `Python/formatter.c`의 `fmt_stmt`에
 `case`를 추가해야 합니다. 출력이 다시 파싱되는지(`--format`의 고정점)도
-확인합니다.
+확인합니다. 주석은 AST에 없으므로 `fmt_stmt`/`fmt_member_list`가 문장의
+`lineno`를 기준으로 `emit_comments_before`를 호출해 보존합니다. 새 문장에서
+이 호출을 빠뜨리면 그 앞의 주석이 사라지고, 블록을 닫을 때는 `end_lineno`로
+꼬리 주석을 흘려보내야 합니다.
 
 `--lint`는 `Python/linter.c`의 `walk_stmt`에서 하위 식과 블록을 순회합니다.
 새 문장 안의 변수 사용을 빠뜨리면 미사용 변수 경고가 틀리게 나옵니다.

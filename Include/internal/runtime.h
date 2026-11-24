@@ -111,6 +111,7 @@ typedef struct AstGenerator {
     void *caller_ctx;        /* 서스펜드 시 돌아갈 컨텍스트 */
     void *stack;             /* POSIX 스택 */
     struct AstGenerator *caller_gen; /* 이 제너레이터를 재개한 제너레이터 (없으면 NULL) */
+    void *gc_stack;          /* GC가 훑을 파이버 스택 기술자 */
 } AstGenerator;
 
 /* 순회 커서: 내장 컬렉션/문자열, 제너레이터, 사용자 객체(__iter__/__next__). */
@@ -217,6 +218,8 @@ struct AstFn {
     int is_generator;        /* 본문에 yield가 있다 */
     int env_reuse;           /* 0=미검사, 1=호출 환경 재사용 가능, -1=불가 */
     int env_bind_sites;      /* 0=미검사, 그 외=함수 환경에 직접 정의되는 바인딩 수+1 */
+    void *bc;                /* 컴파일된 바이트코드 (BcProto), 없으면 NULL */
+    int bc_state;            /* 0=미시도, 1=컴파일됨, -1=트리 워크 */
     AstBuiltin builtin;      /* FN_BUILTIN */
 };
 
@@ -345,6 +348,9 @@ struct Interp {
     RValue *ret;
     RValue *exc;
     int line;                /* 오류 위치 추적용 현재 문장 줄 */
+    int col;                 /* 현재 식/문장의 0부터 시작하는 열 */
+    int span;                /* 진단 캐럿 길이 */
+    const char *source;      /* 진단에 보여줄 원문 (없으면 NULL) */
     const char *base_dir;    /* 주 프로그램이 있는 디렉터리 (모듈 찾기) */
     const char *stdlib_dir;  /* 표준 라이브러리 루트 (Lib) */
     const char **module_dirs;/* 추가 모듈 검색 루트 (패키지 의존성) */
@@ -363,6 +369,8 @@ struct Interp {
     int predeclaring;        /* 선언 수집 단계 (오버로드 병합 허용) */
     int depth;               /* 호출 깊이 (재귀 제한) */
     int recursion_limit;     /* 허용할 최대 호출 깊이 (System으로 설정) */
+    char *stack_hi;          /* 현재 실행 컨텍스트 스택의 시작 (높은 주소) */
+    size_t stack_limit;      /* 안전하게 쓸 수 있는 스택 바이트 */
     AstModule *builtin_modules[16]; /* C가 직접 제공하는 모듈 (System 등) */
     size_t nbuiltin_modules;
     void **regex_objs;       /* 컴파일된 정규식 (id로 참조) */
@@ -373,6 +381,7 @@ struct Interp {
     size_t nframes, cap_frames;
     int repl;                /* REPL 모드: 식 문장의 값을 출력한다 */
     int debug;               /* --debug: 문장마다 멈춘다 */
+    int use_vm;              /* 바이트코드 VM 사용 (--tree-walk/ASTER_TREE_WALK로 끈다) */
     int debug_step;          /* 다음 문장에서 멈춘다 */
     const char *debug_file;  /* 디버거가 표시할 파일 이름 */
     int *debug_breaks;       /* 줄 번호 브레이크포인트 */
@@ -382,6 +391,17 @@ struct Interp {
     Env *free_block_envs;    /* 반납된 블록 환경 (반복문 본문) */
     size_t nfree_block_envs;
 };
+
+/* 현재 실행 컨텍스트의 스택 시작점과 안전 한계를 기록한다.
+   stack_size가 0이면 OS에서 현재 스레드 스택 크기를 조회한다. */
+void Interp_PrepareStackGuard(Interp *in, size_t stack_size);
+
+/* 파서·타입 검사·런타임 오류가 같은 모양으로 출력되도록 하는 진단 프린터.
+   source가 NULL이면 위치 한 줄만 출력하고, 있으면 해당 줄과 캐럿을 덧붙인다.
+   col은 0부터, length는 캐럿 개수(최소 1)다. */
+void Aster_Diagnostic(FILE *out, const char *filename, const char *source,
+                      int line, int col, int length, const char *kind,
+                      const char *message);
 
 void Interp_FrameAppend(Interp *in, const char *name, int line);
 void Interp_FramePush(Interp *in, const char *name);   /* 현재 줄로 추가 */
@@ -501,6 +521,9 @@ void Env_DefineConst(Interp *in, Env *env, const char *name, RValue *value);
 int Env_IsConst(Env *env, const char *name);
 int Env_Assign(Env *env, const char *name, RValue *value);
 int Env_HasLocal(Env *env, const char *name);
+/* env에 직접 정의된 이름만 순회한다(부모 환경은 보지 않는다). */
+typedef void (*EnvVisitFn)(void *ctx, const char *name);
+void Env_VisitLocal(Env *env, EnvVisitFn fn, void *ctx);
 /* 이 환경에 있는 이름의 바인딩을 모두 지운다 (REPL 재정의용). */
 void Env_RemoveLocal(Interp *in, Env *env, const char *name);
 

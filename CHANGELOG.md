@@ -4,6 +4,67 @@ All notable changes to Aster are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Beta 2.0.0]
+
+### Added
+
+- Runtime values (strings, lists, tuples, maps, instances, structs, environments,
+  and other heap objects) now live in a non-moving mark-sweep garbage-collected
+  heap with conservative C-stack roots, typed interpreter/generator roots, and
+  typed AST traversal, instead of growing until process exit. `ASTER_GC_STRESS=1`
+  collects on every allocation for validation, and `ASTER_GC_TRACE` /
+  `ASTER_GC_DEBUG` print collection diagnostics.
+- Function and module bodies now run on a bytecode stack VM by default. The
+  compiler emits stack-machine instructions for expressions, assignments,
+  `if`/`while`/`for`/`for-in` loops, calls, and collections, and hands
+  unsupported constructs (class/struct/enum definitions, imports, `try`,
+  `switch`, comprehensions, and similar) to the tree walker, so behavior is
+  unchanged. `--tree-walk` or `ASTER_TREE_WALK=1` keeps the AST interpreter
+  only; `--debug` also uses the tree walker.
+- `aster pkg publish` builds a deterministic `.astpkg` archive, hashes it, and
+  registers it in a static registry (a directory, `file://` path, or HTTP host
+  that accepts `PUT`). `aster pkg install NAME[@VERSION]` resolves transitive
+  `registry:` dependencies, verifies SHA-256, extracts packages to `vendor/`,
+  and records `aster.lock`. Version immutability, `--force`, `--new`, and
+  `--no-upload` (build `dist/` only) are supported.
+- `aster.pkg` accepts top-level `registry` and `token_env` keys, and dependency
+  values may be written as `registry:VERSION`. Registry and token also come from
+  `--registry`/`--token`, `ASTER_REGISTRY`, and `ASTER_REGISTRY_TOKEN`.
+- Packages that use `__init__.ast` can now import their own sibling modules, for
+  both local-path and vendored registry dependencies.
+- `--format --write` formats a file in place, and `--format --check-format`
+  reports files that are not normalized (exit code 1) for CI use.
+- Diagnostics from the parser, type checker, and runtime now share one format:
+  `file:line:col: kind: message` with a source line and caret. Carets align with
+  UTF-8 text and tabs.
+- The interactive REPL now has line editing (cursor keys, Home/End,
+  Backspace/Delete, Ctrl-K/U/W), persistent history in `~/.aster_repl_history`,
+  and Tab completion for keywords, globals, and `:` commands. Piped input keeps
+  the old line-by-line behavior.
+
+### Changed
+
+- `--format` now preserves line and block comments. Their exact position and
+  surrounding blank lines are still normalized.
+- Deep recursion now raises `RecursionError` before the C stack is exhausted,
+  instead of crashing the process. Generators run with a larger stack.
+
+### Fixed
+
+- On Windows, pressing Ctrl-C while editing a REPL line cancels the line instead
+  of terminating the process and leaving the console without echo or line input.
+  The console mode is also restored if the process is terminated by a console
+  control event.
+- On Windows, `Scanner` reads input in VS Code, Windows Terminal, and other
+  ConPTY hosts, where Enter arrives as `\r` without a following `\n`. Console
+  input is also reset to line mode first, so a terminal left in raw mode by an
+  interrupted REPL no longer swallows typed input.
+- Accessing an inherited static method or static field on a subclass (for
+  example `Derived.make()`) no longer fails with `AttributeError` when the
+  subclass was never instantiated.
+- On Windows the REPL reads complete VT input sequences, so mouse and window
+  reports no longer leave fragments in the line being edited.
+
 ## [Beta 1.0.0] - 2026-11-23
 
 First Beta release. The language and standard library are feature-frozen for the

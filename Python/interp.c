@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "internal/gc.h"
 #include "internal/interp.h"
 #include "internal/parser.h"
+#include "internal/vm.h"
 
-#define ASTER_GEN_STACK (256 * 1024)
+#define ASTER_GEN_STACK (1024 * 1024)
 
 #if defined(_WIN32)
 /* windows.h는 value.h의 VT_* 열거자와 충돌하므로 섬유 API만 직접 선언한다. */
@@ -20,6 +22,11 @@ __declspec(dllimport) void *__stdcall LoadLibraryA(const char *name);
 #else
 #include <ucontext.h>
 #include <dlfcn.h>
+#if defined(__APPLE__)
+#include <pthread.h>
+#else
+#include <sys/resource.h>
+#endif
 #endif
 
 static void *xmalloc_fallback(size_t n) {
@@ -29,6 +36,76 @@ static void *xmalloc_fallback(size_t n) {
         abort();
     }
     return p;
+}
+
+/* ------------------------------------------------------------- 스택 안전 */
+
+#if defined(_WIN32)
+typedef void (__stdcall *AsterStackLimitsFn)(unsigned long long *, unsigned long long *);
+
+static size_t auto_stack_size(void) {
+    static size_t cached;
+    unsigned long long low = 0, high = 0;
+    AsterStackLimitsFn fn;
+
+    if (cached)
+        return cached;
+    fn = (AsterStackLimitsFn)GetProcAddress(GetModuleHandleA("kernel32.dll"),
+                                            "GetCurrentThreadStackLimits");
+    if (fn) {
+        fn(&low, &high);
+        if (high > low)
+            cached = (size_t)(high - low);
+    }
+    if (!cached)
+        cached = 2 * 1024 * 1024;   /* MinGW 기본 스레드 스택 */
+    return cached;
+}
+#elif defined(__APPLE__)
+static size_t auto_stack_size(void) {
+    size_t n = pthread_get_stacksize_np(pthread_self());
+    return n ? n : 8 * 1024 * 1024;
+}
+#else
+static size_t auto_stack_size(void) {
+    struct rlimit rl;
+    if (getrlimit(RLIMIT_STACK, &rl) == 0 && rl.rlim_cur != RLIM_INFINITY && rl.rlim_cur > 0)
+        return (size_t)rl.rlim_cur;
+    return 8 * 1024 * 1024;
+}
+#endif
+
+void Interp_PrepareStackGuard(Interp *in, size_t stack_size) {
+    char probe;
+    size_t total = stack_size ? stack_size : auto_stack_size();
+    size_t reserve;
+
+    if (!total) {
+        in->stack_hi = NULL;
+        in->stack_limit = 0;
+        return;
+    }
+    /* 오류 처리와 트레이스백 출력에 쓸 여유를 남긴다. */
+    reserve = total / 4;
+    if (reserve < 64 * 1024)
+        reserve = 64 * 1024;
+    if (reserve > 1024 * 1024)
+        reserve = 1024 * 1024;
+    if (reserve >= total)
+        reserve = total / 2;
+    in->stack_hi = &probe;
+    in->stack_limit = total - reserve;
+}
+
+static int stack_nearly_full(Interp *in) {
+    char probe;
+    size_t used;
+
+    if (!in->stack_hi || in->stack_limit == 0)
+        return 0;
+    used = in->stack_hi > &probe ? (size_t)(in->stack_hi - &probe)
+                                 : (size_t)(&probe - in->stack_hi);
+    return used >= in->stack_limit;
 }
 
 static RValue *eval(Interp *in, expr_ty e, Env *env);
@@ -410,7 +487,10 @@ static AstFn *make_fn(Interp *in, Env *env, const char *name, asdl_seq *params,
 }
 
 static AstFn *bind_method(Interp *in, AstFn *fn, RValue *self) {
-    AstFn *bound = Arena_Alloc(in->arena, sizeof(AstFn));
+    /* 묶인 함수는 실행 중에만 존재하므로 GC 힙에 둔다. 아레나에 두면
+       RValue로 감싸기 전 C 지역 변수 단계에서 self가 루트로 보이지 않는다. */
+    AstFn *bound = Aster_GC_Alloc(sizeof(AstFn), GK_AST_FN);
+    (void)in;
     *bound = *fn;
     bound->self = self;
     return bound;
@@ -419,10 +499,11 @@ static AstFn *bind_method(Interp *in, AstFn *fn, RValue *self) {
 /* 오버로드 묶음의 각 함수를 self에 묶는다. self가 NULL이면 정적 호출이다. */
 static RValue *bind_overload(Interp *in, AstOverload *overload, RValue *self,
                              AstClass *owner) {
-    AstOverload *bound = Arena_Alloc(in->arena, sizeof(AstOverload));
+    AstOverload *bound = Aster_GC_Alloc(sizeof(AstOverload), GK_AST_OVERLOAD);
     size_t i;
+    /* fns를 먼저 잡는다. 그 사이 수집이 일어나도 count가 아직 0이라 안전하다. */
+    bound->fns = Aster_GC_Alloc(overload->count * sizeof(AstFn *), GK_PTR_ARRAY);
     bound->count = bound->cap = overload->count;
-    bound->fns = Arena_Alloc(in->arena, overload->count * sizeof(AstFn *));
     for (i = 0; i < overload->count; i++) {
         AstFn *fn = self ? bind_method(in, overload->fns[i], self) : overload->fns[i];
         if (owner)
@@ -462,7 +543,7 @@ static int bind_params_ex(Interp *in, AstFn *fn, Env *env, RValue **args, size_t
     const char *vararg_name = NULL, *varkwarg_name = NULL;
 
     if (fn->params_are_lambda) {
-        RValue **lslot = nparams ? Arena_Alloc(in->arena, nparams * sizeof(RValue *)) : NULL;
+        RValue **lslot = nparams ? Aster_GC_Alloc(nparams * sizeof(RValue *), GK_PTR_ARRAY) : NULL;
         unsigned char *lgiven = nparams ? Arena_Alloc(in->arena, nparams) : NULL;
         if (nargs > nparams) {
             RT_Throw(in, "TypeError", "'%s' takes %zu argument(s) but %zu were given",
@@ -528,7 +609,7 @@ static int bind_params_ex(Interp *in, AstFn *fn, Env *env, RValue **args, size_t
                  fname, nnormal, nargs);
         return 0;
     }
-    slot = nnormal ? Arena_Alloc(in->arena, nnormal * sizeof(RValue *)) : NULL;
+    slot = nnormal ? Aster_GC_Alloc(nnormal * sizeof(RValue *), GK_PTR_ARRAY) : NULL;
     given = nnormal ? Arena_Alloc(in->arena, nnormal) : NULL;
     for (i = 0; i < nnormal; i++) {
         slot[i] = NULL;
@@ -661,6 +742,30 @@ static int fn_env_bind_sites(AstFn *fn) {
     return n;
 }
 
+/* 함수 본문을 바이트코드로 한 번만 컴파일해 재사용한다. 실패하면 트리 워크. */
+static BcProto *fn_body_proto(Interp *in, AstFn *fn) {
+    if (!in->use_vm || in->debug || fn->is_generator)
+        return NULL;
+    if (fn->bc_state == 0) {
+        fn->bc = fn->kind == FN_LAMBDA ? (void *)VM_CompileExpr(in, fn->body_expr)
+                                       : (void *)VM_CompileBody(in, fn->body);
+        fn->bc_state = fn->bc ? 1 : -1;
+    }
+    return fn->bc_state == 1 ? (BcProto *)fn->bc : NULL;
+}
+
+/* 모듈 본문처럼 한 번만 실행되는 블록. 컴파일이 안 되면 트리 워크로 넘긴다. */
+static Signal run_block_vm(Interp *in, asdl_seq *body, Env *env) {
+    BcProto *proto;
+
+    if (!in->use_vm || in->debug)
+        return exec_block(in, body, env);
+    proto = VM_CompileBody(in, body);
+    if (!proto)
+        return exec_block(in, body, env);
+    return VM_RunBody(in, proto, env);
+}
+
 static RValue *call_fn_ex(Interp *in, AstFn *fn, RValue **args, size_t nargs,
                           const char **kwn, RValue **kwv, size_t nkw) {
     Env *env;
@@ -679,6 +784,11 @@ static RValue *call_fn_ex(Interp *in, AstFn *fn, RValue **args, size_t nargs,
 
     if (in->recursion_limit > 0 && in->depth >= in->recursion_limit) {
         RT_Throw(in, "RecursionError", "call depth exceeded (possible infinite recursion)");
+        return NULL;
+    }
+    /* 깊이 제한을 크게 올려도 C 스택이 바닥나면 조용히 죽으므로 미리 막는다. */
+    if (stack_nearly_full(in)) {
+        RT_Throw(in, "RecursionError", "call stack is nearly full (recursion too deep)");
         return NULL;
     }
     in->depth++;
@@ -706,7 +816,8 @@ static RValue *call_fn_ex(Interp *in, AstFn *fn, RValue **args, size_t nargs,
     }
 
     if (fn->kind == FN_LAMBDA) {
-        result = eval(in, fn->body_expr, env);
+        BcProto *proto = fn_body_proto(in, fn);
+        result = proto ? VM_RunExpr(in, proto, env) : eval(in, fn->body_expr, env);
         in->depth--;
         if (reuse)
             Env_ReleaseCall(in, env);
@@ -722,7 +833,13 @@ static RValue *call_fn_ex(Interp *in, AstFn *fn, RValue **args, size_t nargs,
         return g;
     }
 
-    exec_block(in, fn->body, env);
+    {
+        BcProto *proto = fn_body_proto(in, fn);
+        if (proto)
+            VM_RunBody(in, proto, env);
+        else
+            exec_block(in, fn->body, env);
+    }
     if (in->sig == SIG_RETURN) {
         RValue *ret = in->ret ? in->ret : null_value(in);
         in->sig = SIG_OK;
@@ -817,7 +934,7 @@ static int fn_accepts_ex(Interp *in, AstFn *fn, RValue **args, size_t nargs,
     }
     if (nargs > nnormal && !has_vararg)
         return -1;
-    slot = nnormal ? Arena_Alloc(in->arena, nnormal * sizeof(RValue *)) : NULL;
+    slot = nnormal ? Aster_GC_Alloc(nnormal * sizeof(RValue *), GK_PTR_ARRAY) : NULL;
     given = nnormal ? Arena_Alloc(in->arena, nnormal) : NULL;
     for (i = 0; i < nnormal; i++) {
         slot[i] = NULL;
@@ -1019,6 +1136,8 @@ static void gen_context_switch(void *save, void *target) {
 }
 
 static void gen_context_release(AstGenerator *gen) {
+    Aster_GC_FreeFiberStack(gen->gc_stack);
+    gen->gc_stack = NULL;
     if (gen->ctx)
         DeleteFiber(gen->ctx);
     gen->ctx = NULL;
@@ -1038,6 +1157,8 @@ static void gen_context_switch(void *save, void *target) {
 }
 
 static void gen_context_release(AstGenerator *gen) {
+    Aster_GC_FreeFiberStack(gen->gc_stack);
+    gen->gc_stack = NULL;
     if (gen->ctx)
         free(gen->ctx);
     if (gen->stack)
@@ -1050,8 +1171,10 @@ static void gen_context_release(AstGenerator *gen) {
 /* 제너레이터 본문을 끝까지 실행하고 호출자에게 영원히 제어를 넘긴다. */
 static void gen_finish(AstGenerator *gen) {
     gen->done = 1;
-    for (;;)
+    for (;;) {
+        Aster_GC_SuspendCurrent();
         gen_context_switch(gen->ctx, gen->caller_ctx);
+    }
 }
 
 static void gen_body_run(AstGenerator *gen) {
@@ -1063,6 +1186,7 @@ static void gen_body_run(AstGenerator *gen) {
     gin->exc = NULL;
     gin->gen = gen;
     gin->depth = 0;
+    Interp_PrepareStackGuard(gin, ASTER_GEN_STACK);
     sig = exec_block(gin, gen->fn->body, gen->body_env);
     if (sig == SIG_RETURN) {
         gin->sig = SIG_OK;
@@ -1081,11 +1205,22 @@ static void gen_body_run(AstGenerator *gen) {
 
 #if defined(_WIN32)
 static void __stdcall gen_fiber_proc(void *param) {
-    gen_body_run((AstGenerator *)param);
+    AstGenerator *gen = (AstGenerator *)param;
+    char anchor;
+
+    gen->gc_stack = Aster_GC_NewFiberStack(&anchor);
+    Aster_GC_EnterFiberStack(gen->gc_stack);
+    gen_body_run(gen);
 }
 #else
 static void gen_ucontext_proc(void) {
-    gen_body_run(g_starting_gen);
+    AstGenerator *gen = g_starting_gen;
+    char anchor;
+
+    gen->gc_stack = Aster_GC_NewFiberStack(&anchor);
+    Aster_GC_EnterFiberStack(gen->gc_stack);
+    g_starting_gen = NULL;
+    gen_body_run(gen);
 }
 #endif
 
@@ -1131,10 +1266,17 @@ RValue *Generator_Next(Interp *in, AstGenerator *gen, int *ended) {
 
     {
         void *save = gen_context_current();
+        Aster_GC_SuspendCurrent();
+        if (gen->gc_stack)
+            Aster_GC_EnterFiberStack(gen->gc_stack);
         g_current_gen = gen;
         gen_context_switch(save, gen->ctx);
     }
     g_current_gen = gen->caller_gen;
+    if (gen->caller_gen && gen->caller_gen->gc_stack)
+        Aster_GC_EnterFiberStack(gen->caller_gen->gc_stack);
+    else
+        Aster_GC_EnterMainStack();
 
     if (gen->failed) {
         Interp *gin = gen->interp;
@@ -1145,6 +1287,8 @@ RValue *Generator_Next(Interp *in, AstGenerator *gen, int *ended) {
         in->sig = SIG_THROW;
         in->exc = gin->exc;
         in->line = gin->line;
+        in->col = gin->col;
+        in->span = gin->span;
         gin->sig = SIG_OK;
         gin->exc = NULL;
         gen_context_release(gen);
@@ -1537,6 +1681,8 @@ static operator_ty assign_op_to_operator(assign_op_ty op) {
 
 /* ---- 어트리뷰트 ---- */
 
+static void resolve_bases(Interp *in, AstClass *cls);
+
 static RValue *get_attr(Interp *in, RValue *base, const char *name) {
     if (!base || base->kind == RV_NULL)
         return RT_ThrowValue(in, "NullPointerError", "accessed '%s' on a null value", name);
@@ -1619,6 +1765,10 @@ static RValue *get_attr(Interp *in, RValue *base, const char *name) {
     case RV_CLASS: {
         AstClass *cls;
         MethodDesc *method;
+        /* 정적 멤버는 인스턴스 생성 없이 접근할 수 있으므로 여기서 기반 클래스를 연결한다. */
+        resolve_bases(in, base->u.cls);
+        if (in->sig != SIG_OK)
+            return NULL;
         for (cls = base->u.cls; cls; cls = cls->base) {
             size_t i;
             for (i = 0; i < cls->nfields; i++) {
@@ -2041,7 +2191,7 @@ static RValue *instantiate_struct(Interp *in, AstStructType *type, RValue **args
     if (in->sig != SIG_OK)
         return NULL;
 
-    slot = Arena_Alloc(in->arena, sizeof(RValue *));
+    slot = Aster_GC_Alloc(sizeof(RValue *), GK_PTR_ARRAY);
     *slot = base;
     self = RValue_Ptr(in, slot, NULL);
 
@@ -2098,7 +2248,7 @@ static MethodDesc *find_method_slot(MethodDesc *methods, size_t count, const cha
     return NULL;
 }
 
-static AstClass *build_class(Interp *in, stmt_ty s, Env *env) {
+static AstClass *build_class(Interp *in, stmt_ty s, Env *env, AstClass **root_slot) {
     AstClass *cls = Arena_Alloc(in->arena, sizeof(AstClass));
     asdl_seq *members = s->v.ClassDef.members;
     size_t n = asdl_seq_LEN(members);
@@ -2107,6 +2257,9 @@ static AstClass *build_class(Interp *in, stmt_ty s, Env *env) {
     size_t i;
     size_t fi = 0, mi = 0, ci = 0;
 
+    /* 정적 필드 값을 만드는 동안 수집이 일어나도 cls와 그 값들이 보이도록 한다. */
+    if (root_slot)
+        *root_slot = cls;
     cls->name = s->v.ClassDef.name;
     cls->env = env;
     if (s->v.ClassDef.base)
@@ -2280,13 +2433,16 @@ static AstClass *build_class(Interp *in, stmt_ty s, Env *env) {
     return cls;
 }
 
-static AstStructType *build_struct(Interp *in, stmt_ty s, Env *env) {
+static AstStructType *build_struct(Interp *in, stmt_ty s, Env *env,
+                                   AstStructType **root_slot) {
     AstStructType *type = Arena_Alloc(in->arena, sizeof(AstStructType));
     asdl_seq *members = s->v.StructDef.members;
     size_t n = asdl_seq_LEN(members);
     size_t nfields = 0, nctors = 0;
     size_t i, fi = 0, ci = 0;
 
+    if (root_slot)
+        *root_slot = type;
     type->tag = s->v.StructDef.tag;
     type->alias = s->v.StructDef.alias;
     type->env = env;
@@ -2557,8 +2713,13 @@ static Signal exec_decl(Interp *in, stmt_ty s, Env *env) {
                 decl->kind = FN_BUILTIN;
                 decl->builtin.name = decl->name;
                 decl->builtin.fn = bi_extern_call;
-                decl->builtin.self = RValue_Func(in, decl);
-                Env_Define(in, env, decl->name, RValue_Func(in, decl));
+                {
+                    /* decl은 아레나에 있어 GC가 따라가지 못하므로, 만든 값을
+                       지역 변수에 두어 수집되지 않게 한다. */
+                    RValue *decl_value = RValue_Func(in, decl);
+                    decl->builtin.self = decl_value;
+                    Env_Define(in, env, decl->name, decl_value);
+                }
                 return SIG_OK;
             }
             AstFn *fn = make_fn(in, env, s->v.FunctionDef.name, s->v.FunctionDef.params, 0,
@@ -2577,7 +2738,12 @@ static Signal exec_decl(Interp *in, stmt_ty s, Env *env) {
                 ov->fns = NULL;
                 overload_append(in, ov, (*cell)->u.fn);
                 overload_append(in, ov, fn);
-                *cell = RValue_Overload(in, ov);
+                {
+                    void *root = ov;
+                    Aster_GC_PushRoot(GC_ROOT_OVERLOAD, &root);
+                    *cell = RValue_Overload(in, ov);
+                    Aster_GC_PopRoot();
+                }
             }
             else if (cell && *cell && (*cell)->kind == RV_OVERLOAD) {
                 AstFn *fn = make_fn(in, env, s->v.FunctionDef.name,
@@ -2589,16 +2755,22 @@ static Signal exec_decl(Interp *in, stmt_ty s, Env *env) {
         return SIG_OK;
     case ClassDef_kind:
         if (!Env_HasLocal(env, s->v.ClassDef.name)) {
-            AstClass *cls = build_class(in, s, env);
+            AstClass *cls = NULL;
+            Aster_GC_PushRoot(GC_ROOT_CLASS, (void **)&cls);
+            build_class(in, s, env, &cls);
             Env_Define(in, env, s->v.ClassDef.name, RValue_Class(in, cls));
+            Aster_GC_PopRoot();
         }
         return SIG_OK;
     case StructDef_kind:
         if (!Env_HasLocal(env, s->v.StructDef.tag)) {
-            AstStructType *type = build_struct(in, s, env);
+            AstStructType *type = NULL;
+            Aster_GC_PushRoot(GC_ROOT_STRUCTTYPE, (void **)&type);
+            build_struct(in, s, env, &type);
             Env_Define(in, env, type->tag, RValue_StructType(in, type));
             if (type->alias && strcmp(type->alias, type->tag) != 0)
                 Env_Define(in, env, type->alias, RValue_StructType(in, type));
+            Aster_GC_PopRoot();
         }
         return SIG_OK;
     case InterfaceDef_kind:
@@ -2622,6 +2794,7 @@ static Signal exec_decl(Interp *in, stmt_ty s, Env *env) {
             AstEnumType *et = Arena_Alloc(in->arena, sizeof(AstEnumType));
             size_t n = asdl_seq_LEN(s->v.EnumDef.members);
             size_t i;
+            Aster_GC_PushRoot(GC_ROOT_ENUM, (void **)&et);
             et->name = s->v.EnumDef.name;
             et->env = env;
             et->nmembers = n;
@@ -2633,8 +2806,10 @@ static Signal exec_decl(Interp *in, stmt_ty s, Env *env) {
                 et->members[i].nparams = asdl_seq_LEN(em->params);
                 if (em->value) {
                     et->members[i].value = eval(in, em->value, env);
-                    if (in->sig != SIG_OK)
+                    if (in->sig != SIG_OK) {
+                        Aster_GC_PopRoot();
                         return in->sig;
+                    }
                 }
                 else {
                     et->members[i].value = RValue_Int(in, (int64_t)i);
@@ -2675,6 +2850,7 @@ static Signal exec_decl(Interp *in, stmt_ty s, Env *env) {
                 et->nmethods = mi;
             }
             Env_Define(in, env, et->name, RValue_EnumType(in, et));
+            Aster_GC_PopRoot();
         }
         return SIG_OK;
     default:
@@ -2859,14 +3035,13 @@ static int check_declared_value(Interp *in, typeref_ty ty, RValue *value) {
     return 1;
 }
 
-static Signal exec_var_decl(Interp *in, stmt_ty s, Env *env) {
+/* 이미 계산한 초기값을 선언문에 맞춰 정의한다. 트리 워커와 VM이 함께 쓴다. */
+static Signal define_var_value(Interp *in, Env *env, stmt_ty s, RValue *value) {
     initializer_ty init = s->v.VarDecl.init;
     /* 람다 초기화에서 선언 타입은 람다의 반환 타입 표기다. 값은 람다 자체다. */
     int lambda_init = init && init->kind == ExprInit_kind &&
                       init->v.ExprInit.value->kind == Lambda_kind;
-    RValue *value = eval_initializer(in, env, s->v.VarDecl.ty, init);
-    if (in->sig != SIG_OK)
-        return in->sig;
+
     /* 정적 타입 검사기는 int를 float 자리에 허용한다. 런타임 값도 맞춘다. */
     if (value && value->kind == RV_INT && s->v.VarDecl.ty &&
         s->v.VarDecl.ty->kind == Primitive_kind &&
@@ -2881,11 +3056,19 @@ static Signal exec_var_decl(Interp *in, stmt_ty s, Env *env) {
     return SIG_OK;
 }
 
+static Signal exec_var_decl(Interp *in, stmt_ty s, Env *env) {
+    initializer_ty init = s->v.VarDecl.init;
+    RValue *value = eval_initializer(in, env, s->v.VarDecl.ty, init);
+    if (in->sig != SIG_OK)
+        return in->sig;
+    return define_var_value(in, env, s, value);
+}
+
 static Signal exec_destructure(Interp *in, stmt_ty s, Env *env) {
     RValue *value = eval(in, s->v.Destructure.value, env);
     asdl_seq *names = s->v.Destructure.names;
     size_t n = asdl_seq_LEN(names);
-    RValue **items = n ? Arena_Alloc(in->arena, n * sizeof(RValue *)) : NULL;
+    RValue **items = n ? Aster_GC_Alloc(n * sizeof(RValue *), GK_PTR_ARRAY) : NULL;
     IterCursor cur;
     size_t got = 0, i;
 
@@ -3243,17 +3426,14 @@ static Signal exec_slice_assign(Interp *in, expr_ty target, RValue *value, Env *
     return SIG_OK;
 }
 
-static Signal exec_assign(Interp *in, stmt_ty s, Env *env) {
-    expr_ty target = s->v.Assign.target;
-    RValue *value = eval(in, s->v.Assign.value, env);
+/* 이미 계산한 값을 할당 대상에 쓴다. 트리 워커와 VM이 함께 쓴다. */
+static Signal assign_to(Interp *in, expr_ty target, assign_op_ty op, RValue *value,
+                        Env *env) {
     Target tgt;
-
-    if (in->sig != SIG_OK)
-        return in->sig;
 
     if (target->kind == Subscript_kind &&
         target->v.Subscript.index->kind == Slice_kind) {
-        if (s->v.Assign.op != AssignEq) {
+        if (op != AssignEq) {
             RT_Throw(in, "TypeError", "slice assignment only supports '='");
             return SIG_THROW;
         }
@@ -3263,10 +3443,10 @@ static Signal exec_assign(Interp *in, stmt_ty s, Env *env) {
     if (target->kind == Tuple_kind) {
         asdl_seq *elems = target->v.Tuple.elements;
         size_t n = asdl_seq_LEN(elems);
-        RValue **items = n ? Arena_Alloc(in->arena, n * sizeof(RValue *)) : NULL;
+        RValue **items = n ? Aster_GC_Alloc(n * sizeof(RValue *), GK_PTR_ARRAY) : NULL;
         IterCursor cur;
         size_t got = 0, i;
-        if (s->v.Assign.op != AssignEq) {
+        if (op != AssignEq) {
             RT_Throw(in, "TypeError", "destructuring only supports '='");
             return SIG_THROW;
         }
@@ -3327,8 +3507,8 @@ static Signal exec_assign(Interp *in, stmt_ty s, Env *env) {
             RT_Throw(in, "NameError", "name '%s' is not defined", target->v.Name.id);
             return SIG_THROW;
         }
-        if (s->v.Assign.op != AssignEq) {
-            value = apply_binop(in, assign_op_to_operator(s->v.Assign.op), *cell, value);
+        if (op != AssignEq) {
+            value = apply_binop(in, assign_op_to_operator(op), *cell, value);
             if (in->sig != SIG_OK)
                 return in->sig;
         }
@@ -3340,11 +3520,11 @@ static Signal exec_assign(Interp *in, stmt_ty s, Env *env) {
         return in->sig;
 
     if (tgt.prop) {
-        if (s->v.Assign.op != AssignEq) {
+        if (op != AssignEq) {
             RValue *current = property_read(in, tgt.prop, tgt.self);
             if (in->sig != SIG_OK)
                 return in->sig;
-            value = apply_binop(in, assign_op_to_operator(s->v.Assign.op), current, value);
+            value = apply_binop(in, assign_op_to_operator(op), current, value);
             if (in->sig != SIG_OK)
                 return in->sig;
         }
@@ -3354,11 +3534,11 @@ static Signal exec_assign(Interp *in, stmt_ty s, Env *env) {
 
     if (tgt.is_subscript) {
         int ok;
-        if (s->v.Assign.op != AssignEq) {
+        if (op != AssignEq) {
             RValue *current = RValue_GetItem(in, tgt.container, tgt.index, &ok);
             if (!ok)
                 return in->sig;
-            value = apply_binop(in, assign_op_to_operator(s->v.Assign.op), current, value);
+            value = apply_binop(in, assign_op_to_operator(op), current, value);
             if (in->sig != SIG_OK)
                 return in->sig;
         }
@@ -3372,13 +3552,21 @@ static Signal exec_assign(Interp *in, stmt_ty s, Env *env) {
         return SIG_THROW;
     }
 
-    if (s->v.Assign.op != AssignEq) {
-        value = apply_binop(in, assign_op_to_operator(s->v.Assign.op), *tgt.slot, value);
+    if (op != AssignEq) {
+        value = apply_binop(in, assign_op_to_operator(op), *tgt.slot, value);
         if (in->sig != SIG_OK)
             return in->sig;
     }
     *tgt.slot = RValue_Copy(in, value);
     return SIG_OK;
+}
+
+static Signal exec_assign(Interp *in, stmt_ty s, Env *env) {
+    RValue *value = eval(in, s->v.Assign.value, env);
+
+    if (in->sig != SIG_OK)
+        return in->sig;
+    return assign_to(in, s->v.Assign.target, s->v.Assign.op, value, env);
 }
 
 static Signal exec_if(Interp *in, stmt_ty s, Env *env) {
@@ -3902,7 +4090,7 @@ static AstModule *load_module(Interp *in, asdl_seq *path) {
     collect_module_exports(in, module, mod->v.Module.body);
     if (in->sig == SIG_OK) {
         free(source);
-        sig = exec_block(in, mod->v.Module.body, module->env);
+        sig = run_block_vm(in, mod->v.Module.body, module->env);
         if (sig == SIG_RETURN) {
             in->sig = SIG_OK;
             in->ret = NULL;
@@ -4345,6 +4533,8 @@ static void debug_tick(Interp *in, stmt_ty s, Env *env) {
 
 static Signal exec_stmt(Interp *in, stmt_ty s, Env *env) {
     in->line = s->lineno;
+    in->col = s->col_offset;
+    in->span = 1;
     if (in->nframes > 0)
         in->frames[in->nframes - 1].line = s->lineno;
 
@@ -4392,6 +4582,7 @@ static Signal exec_stmt(Interp *in, stmt_ty s, Env *env) {
             return SIG_THROW;
         }
         in->gen->yielded = value;
+        Aster_GC_SuspendCurrent();
         gen_context_switch(in->gen->ctx, in->gen->caller_ctx);
         return SIG_OK;
     }
@@ -4428,7 +4619,7 @@ static Signal exec_stmt(Interp *in, stmt_ty s, Env *env) {
 static int eval_args(Interp *in, asdl_seq *args, Env *env,
                      RValue **small, size_t smallcap, RValue ***out, size_t *nout) {
     size_t n = asdl_seq_LEN(args);
-    RValue **values = n <= smallcap ? small : Arena_Alloc(in->arena, n * sizeof(RValue *));
+    RValue **values = n <= smallcap ? small : Aster_GC_Alloc(n * sizeof(RValue *), GK_PTR_ARRAY);
     size_t i;
 
     for (i = 0; i < n; i++) {
@@ -4493,6 +4684,108 @@ static int set_subset(const RValue *a, const RValue *b) {
             return 0;
     }
     return 1;
+}
+
+/* 두 값을 비교한다. 객체 훅/세트 부분 순서까지 eval과 같은 규칙을 쓴다. */
+static RValue *apply_cmp(Interp *in, cmpop_ty op, RValue *left, RValue *right) {
+    int cmp;
+
+    if (left->kind == RV_OBJECT || right->kind == RV_OBJECT) {
+        const char *name = NULL, *reflected = NULL;
+        RValue *handled = NULL;
+        switch (op) {
+        case Eq: name = "__eq__"; reflected = "__eq__"; break;
+        case NotEq: name = "__eq__"; reflected = "__eq__"; break;
+        case Lt: name = "__lt__"; reflected = "__gt__"; break;
+        case LtE: name = "__le__"; reflected = "__ge__"; break;
+        case Gt: name = "__gt__"; reflected = "__lt__"; break;
+        case GtE: name = "__ge__"; reflected = "__le__"; break;
+        }
+        if (left->kind == RV_OBJECT && RValue_HasMethod(in, left, name)) {
+            RValue *args[1];
+            args[0] = right;
+            handled = Interp_CallMethod(in, left, name, args, 1);
+        }
+        else if (right->kind == RV_OBJECT &&
+                 RValue_HasMethod(in, right, reflected)) {
+            RValue *args[1];
+            args[0] = left;
+            handled = Interp_CallMethod(in, right, reflected, args, 1);
+        }
+        if (handled) {
+            int truth = RValue_Truthy(handled);
+            if (op == NotEq)
+                truth = !truth;
+            return RValue_Bool(in, truth);
+        }
+        if (in->sig != SIG_OK)
+            return NULL;
+    }
+    switch (op) {
+    case Eq:
+        return RValue_Bool(in, RValue_Equal(left, right));
+    case NotEq:
+        return RValue_Bool(in, !RValue_Equal(left, right));
+    default:
+        break;
+    }
+    if (is_setlike(left) && is_setlike(right)) {
+        int eq = RValue_Equal(left, right);
+        int sub = set_subset(left, right);
+        int sup = set_subset(right, left);
+        switch (op) {
+        case Lt:
+            return RValue_Bool(in, sub && !eq);
+        case LtE:
+            return RValue_Bool(in, sub);
+        case Gt:
+            return RValue_Bool(in, sup && !eq);
+        case GtE:
+            return RValue_Bool(in, sup);
+        default:
+            return RValue_Bool(in, 0);
+        }
+    }
+    if (!RValue_Compare(in, left, right, &cmp))
+        return NULL;
+    switch (op) {
+    case Lt:
+        return RValue_Bool(in, cmp < 0);
+    case LtE:
+        return RValue_Bool(in, cmp <= 0);
+    case Gt:
+        return RValue_Bool(in, cmp > 0);
+    case GtE:
+        return RValue_Bool(in, cmp >= 0);
+    default:
+        return RValue_Bool(in, 0);
+    }
+}
+
+/* 단항 연산. 객체 __neg__ 훅까지 eval과 같은 규칙을 쓴다. */
+static RValue *apply_unary(Interp *in, unaryop_ty op, RValue *operand) {
+    int ok;
+
+    switch (op) {
+    case Not:
+        return RValue_Bool(in, !RValue_Truthy(operand));
+    case UAdd:
+        if (operand->kind == RV_FLOAT)
+            return RValue_Float(in, operand->u.f);
+        return RValue_Int(in, RValue_AsInt(in, operand, &ok));
+    case USub:
+        if (operand->kind == RV_OBJECT && RValue_HasMethod(in, operand, "__neg__"))
+            return Interp_CallMethod(in, operand, "__neg__", NULL, 0);
+        if (operand->kind == RV_FLOAT)
+            return RValue_Float(in, -operand->u.f);
+        if (operand->kind == RV_INT && operand->u.i == INT64_MIN)
+            return int_overflow(in);
+        if (operand->kind == RV_INT || operand->kind == RV_BOOL)
+            return RValue_Int(in, -RValue_AsInt(in, operand, &ok));
+        RT_Throw(in, "TypeError", "unary '-' requires a number");
+        return NULL;
+    }
+    return null_value(in);
 }
 
 static int eval_slice_bound(Interp *in, expr_ty e, Env *env, int *present, int64_t *out) {
@@ -4602,7 +4895,7 @@ static RValue *eval_slice(Interp *in, RValue *container, expr_ty slice_expr, Env
         }
     }
 
-    items = xmalloc_fallback((len > 0 ? (size_t)len : 1) * sizeof(RValue *));
+    items = Aster_GC_Alloc((len > 0 ? (size_t)len : 1) * sizeof(RValue *), GK_PTR_ARRAY);
     for (i = start; step > 0 ? i < stop : i > stop; ) {
         RValue *item = container->kind == RV_LIST
                            ? container->u.list->items[i]
@@ -4623,7 +4916,6 @@ static RValue *eval_slice(Interp *in, RValue *container, expr_ty slice_expr, Env
         size_t k;
         for (k = 0; k < n; k++)
             List_Append(in, list, items[k]);
-        free(items);
         return RValue_List(in, list);
     }
     else {
@@ -4631,13 +4923,18 @@ static RValue *eval_slice(Interp *in, RValue *container, expr_ty slice_expr, Env
         size_t k;
         for (k = 0; k < n; k++)
             tuple->items[k] = items[k];
-        free(items);
         return RValue_Tuple(in, tuple);
     }
 }
 
 static RValue *eval(Interp *in, expr_ty e, Env *env) {
     in->line = e->lineno;
+    in->col = e->col_offset;
+    in->span = (e->lineno == e->end_lineno && e->end_col_offset > e->col_offset)
+                   ? e->end_col_offset - e->col_offset
+                   : 1;
+    if (in->span > 40)
+        in->span = 40;
 
     switch (e->kind) {
     case Constant_kind: {
@@ -4938,29 +5235,9 @@ static RValue *eval(Interp *in, expr_ty e, Env *env) {
     }
     case UnaryOp_kind: {
         RValue *operand = eval(in, e->v.UnaryOp.operand, env);
-        int ok;
         if (in->sig != SIG_OK)
             return NULL;
-        switch (e->v.UnaryOp.op) {
-        case Not:
-            return RValue_Bool(in, !RValue_Truthy(operand));
-        case UAdd:
-            if (operand->kind == RV_FLOAT)
-                return RValue_Float(in, operand->u.f);
-            return RValue_Int(in, RValue_AsInt(in, operand, &ok));
-        case USub:
-            if (operand->kind == RV_OBJECT && RValue_HasMethod(in, operand, "__neg__"))
-                return Interp_CallMethod(in, operand, "__neg__", NULL, 0);
-            if (operand->kind == RV_FLOAT)
-                return RValue_Float(in, -operand->u.f);
-            if (operand->kind == RV_INT && operand->u.i == INT64_MIN)
-                return int_overflow(in);
-            if (operand->kind == RV_INT || operand->kind == RV_BOOL)
-                return RValue_Int(in, -RValue_AsInt(in, operand, &ok));
-            RT_Throw(in, "TypeError", "unary '-' requires a number");
-            return NULL;
-        }
-        return null_value(in);
+        return apply_unary(in, e->v.UnaryOp.op, operand);
     }
     case BinOp_kind: {
         RValue *left = eval(in, e->v.BinOp.left, env);
@@ -4975,82 +5252,12 @@ static RValue *eval(Interp *in, expr_ty e, Env *env) {
     case Compare_kind: {
         RValue *left = eval(in, e->v.Compare.left, env);
         RValue *right;
-        int cmp;
         if (in->sig != SIG_OK)
             return NULL;
         right = eval(in, e->v.Compare.right, env);
         if (in->sig != SIG_OK)
             return NULL;
-        if (left->kind == RV_OBJECT || right->kind == RV_OBJECT) {
-            const char *name = NULL, *reflected = NULL;
-            RValue *handled = NULL;
-            switch (e->v.Compare.op) {
-            case Eq: name = "__eq__"; reflected = "__eq__"; break;
-            case NotEq: name = "__eq__"; reflected = "__eq__"; break;
-            case Lt: name = "__lt__"; reflected = "__gt__"; break;
-            case LtE: name = "__le__"; reflected = "__ge__"; break;
-            case Gt: name = "__gt__"; reflected = "__lt__"; break;
-            case GtE: name = "__ge__"; reflected = "__le__"; break;
-            }
-            if (left->kind == RV_OBJECT && RValue_HasMethod(in, left, name)) {
-                RValue *args[1];
-                args[0] = right;
-                handled = Interp_CallMethod(in, left, name, args, 1);
-            }
-            else if (right->kind == RV_OBJECT &&
-                     RValue_HasMethod(in, right, reflected)) {
-                RValue *args[1];
-                args[0] = left;
-                handled = Interp_CallMethod(in, right, reflected, args, 1);
-            }
-            if (handled) {
-                int truth = RValue_Truthy(handled);
-                if (e->v.Compare.op == NotEq)
-                    truth = !truth;
-                return RValue_Bool(in, truth);
-            }
-            if (in->sig != SIG_OK)
-                return NULL;
-        }
-        switch (e->v.Compare.op) {
-        case Eq:
-            return RValue_Bool(in, RValue_Equal(left, right));
-        case NotEq:
-            return RValue_Bool(in, !RValue_Equal(left, right));
-        default:
-            break;
-        }
-        if (is_setlike(left) && is_setlike(right)) {
-            int eq = RValue_Equal(left, right);
-            int sub = set_subset(left, right);
-            int sup = set_subset(right, left);
-            switch (e->v.Compare.op) {
-            case Lt:
-                return RValue_Bool(in, sub && !eq);
-            case LtE:
-                return RValue_Bool(in, sub);
-            case Gt:
-                return RValue_Bool(in, sup && !eq);
-            case GtE:
-                return RValue_Bool(in, sup);
-            default:
-                return RValue_Bool(in, 0);
-            }
-        }
-        if (!RValue_Compare(in, left, right, &cmp))
-            return NULL;
-        switch (e->v.Compare.op) {
-        case Lt:
-            return RValue_Bool(in, cmp < 0);
-        case LtE:
-            return RValue_Bool(in, cmp <= 0);
-        case Gt:
-            return RValue_Bool(in, cmp > 0);
-        case GtE:
-            return RValue_Bool(in, cmp >= 0);
-        default:
-            return RValue_Bool(in, 0);
-        }
+        return apply_cmp(in, e->v.Compare.op, left, right);
     }
     case Is_kind: {
         RValue *value = eval(in, e->v.Is.value, env);
@@ -5145,7 +5352,7 @@ static RValue *eval(Interp *in, expr_ty e, Env *env) {
         nkw = asdl_seq_LEN(e->v.Call.keywords);
         if (nkw) {
             kwn = Arena_Alloc(in->arena, nkw * sizeof(const char *));
-            kwv = Arena_Alloc(in->arena, nkw * sizeof(RValue *));
+            kwv = Aster_GC_Alloc(nkw * sizeof(RValue *), GK_PTR_ARRAY);
             for (i = 0; i < nkw; i++) {
                 keyword_ty kw = asdl_seq_GET(e->v.Call.keywords, i);
                 kwn[i] = kw->name;
@@ -5351,11 +5558,61 @@ static RValue *eval(Interp *in, expr_ty e, Env *env) {
 
 /* ---- 진입점 ---- */
 
+Signal Interp_ExecStmtNode(Interp *in, stmt_ty s, Env *env) {
+    return exec_stmt(in, s, env);
+}
+
+RValue *Interp_EvalExprNode(Interp *in, expr_ty e, Env *env) {
+    return eval(in, e, env);
+}
+
+RValue *Interp_CallValueEx(Interp *in, RValue *callee, RValue **args, size_t nargs,
+                           const char **kwn, RValue **kwv, size_t nkw) {
+    return call_value_ex(in, callee, args, nargs, kwn, kwv, nkw);
+}
+
+RValue *Interp_ApplyBinOp(Interp *in, operator_ty op, RValue *left, RValue *right) {
+    return apply_binop(in, op, left, right);
+}
+
+RValue *Interp_ApplyCompare(Interp *in, cmpop_ty op, RValue *left, RValue *right) {
+    return apply_cmp(in, op, left, right);
+}
+
+RValue *Interp_ApplyUnary(Interp *in, unaryop_ty op, RValue *operand) {
+    return apply_unary(in, op, operand);
+}
+
+RValue *Interp_GetAttr(Interp *in, RValue *base, const char *name) {
+    return get_attr(in, base, name);
+}
+
+RValue *Interp_IsType(Interp *in, RValue *value, typeref_ty ty) {
+    return RValue_Bool(in, value_is_type(in, value, ty));
+}
+
+RValue *Interp_Cast(Interp *in, typeref_ty ty, RValue *value) {
+    return do_cast(in, ty, value);
+}
+
+Signal Interp_DefineVarValue(Interp *in, Env *env, stmt_ty decl, RValue *value) {
+    return define_var_value(in, env, decl, value);
+}
+
+Signal Interp_AssignTarget(Interp *in, expr_ty target, assign_op_ty op,
+                           RValue *value, Env *env) {
+    return assign_to(in, target, op, value, env);
+}
+
+int Interp_CheckDeclaredValue(Interp *in, typeref_ty ty, RValue *value) {
+    return check_declared_value(in, ty, value);
+}
+
 int Interp_RunModule(Interp *in, mod_ty mod) {
     predeclare(in, in->globals, mod->v.Module.body, 0);
     if (in->sig != SIG_OK)
         return 1;
-    exec_block(in, mod->v.Module.body, in->globals);
+    run_block_vm(in, mod->v.Module.body, in->globals);
     if (in->sig == SIG_RETURN) {
         in->sig = SIG_OK;
         in->ret = NULL;

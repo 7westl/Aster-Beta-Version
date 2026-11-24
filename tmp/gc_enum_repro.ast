@@ -1,0 +1,5 @@
+import aster.time.DayOfWeek;
+
+println(DayOfWeek.MONDAY.getValue());
+println(DayOfWeek.SUNDAY.plus(1).name);
+println(DayOfWeek.MONDAY.minus(1).name);

@@ -13,6 +13,7 @@ typedef struct Point {
     Point(int a, int b): x(a), y(b) {
     }
 } Point;
+/* format 대상: 연산자 우선순위, 람다, f-string, 제어문, 컬렉션 */
 class Circle implements Shape {
     private float r;
     public static int created = 0;

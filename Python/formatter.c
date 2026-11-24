@@ -1,9 +1,177 @@
 /* Aster 표준 포매터.
-   AST만 보고 다시 소스를 만든다. 주석, 빈 줄, 원래 줄바꿈은 보존하지 않지만
-   출력은 항상 같은 모양이라 다시 포매팅해도 결과가 변하지 않는다. */
+   AST를 기준으로 소스를 만든다. 원문을 함께 받으면 주석을 문장/멤버 경계에
+   맞춰 보존하고, 빈 줄과 원래 줄바꿈은 버린다. 출력은 항상 같은 모양이라
+   다시 포매팅해도 결과가 변하지 않는다(고정점). */
 #include "internal/formatter.h"
+#include <stdlib.h>
 #include <string.h>
 #include "internal/object.h"
+
+/* ------------------------------------------------------------- 주석 수집 */
+
+typedef struct FmtComment {
+    const char *text;
+    size_t length;
+    int line;                /* 시작 줄 (1부터) */
+    int col;                 /* 시작 열 (코드 포인트 단위) */
+    struct FmtComment *next;
+} FmtComment;
+
+/* 'export ' 뒤에 이어 쓸 때처럼 이미 줄 앞부분을 출력했다면 들여쓰기를 건너뛴다. */
+static int g_skip_indent;
+
+static FmtComment *g_comments;
+static FmtComment *g_comment_next;
+
+static void comment_push(const char *text, size_t length, int line, int col) {
+    FmtComment **tail = &g_comments;
+    FmtComment *c = malloc(sizeof(FmtComment));
+
+    if (!c)
+        return;
+    c->text = text;
+    c->length = length;
+    c->line = line;
+    c->col = col;
+    c->next = NULL;
+    while (*tail)
+        tail = &(*tail)->next;
+    *tail = c;
+}
+
+/* 원문에서 줄 주석과 블록 주석을 순서대로 모은다. 문자열 안은 건너뛴다. */
+static void scan_comments(const char *source, size_t length) {
+    size_t i = 0;
+    int line = 1, col = 0;
+
+    if (length >= 3 && (unsigned char)source[0] == 0xEF &&
+        (unsigned char)source[1] == 0xBB && (unsigned char)source[2] == 0xBF)
+        i = 3;
+    while (i < length) {
+        unsigned char c = (unsigned char)source[i];
+        if (c == '\n') {
+            line++;
+            col = 0;
+            i++;
+            continue;
+        }
+        if (c == '\r') {
+            i++;
+            continue;
+        }
+        if (c == '#') {
+            size_t start = i;
+            int sline = line, scol = col;
+            while (i < length && source[i] != '\n')
+                i++;
+            comment_push(source + start, i - start, sline, scol);
+            continue;
+        }
+        if (c == '/' && i + 1 < length && source[i + 1] == '*') {
+            size_t start = i;
+            int sline = line, scol = col;
+            i += 2;
+            col += 2;
+            while (i < length) {
+                if (source[i] == '*' && i + 1 < length && source[i + 1] == '/') {
+                    i += 2;
+                    col += 2;
+                    break;
+                }
+                if (source[i] == '\n') {
+                    line++;
+                    col = 0;
+                }
+                else if (((unsigned char)source[i] & 0xC0) != 0x80) {
+                    col++;
+                }
+                i++;
+            }
+            comment_push(source + start, i - start, sline, scol);
+            continue;
+        }
+        if (c == '"' || c == '\'') {
+            char quote = (char)c;
+            i++;
+            col++;
+            while (i < length && source[i] != quote) {
+                if (source[i] == '\\' && i + 1 < length) {
+                    i += 2;
+                    col += 2;
+                }
+                else if (source[i] == '\n') {
+                    line++;
+                    col = 0;
+                    i++;
+                }
+                else {
+                    if (((unsigned char)source[i] & 0xC0) != 0x80)
+                        col++;
+                    i++;
+                }
+            }
+            if (i < length) {
+                i++;
+                col++;
+            }
+            continue;
+        }
+        if ((c & 0xC0) != 0x80)
+            col++;
+        i++;
+    }
+}
+
+static void emit_comment(FILE *out, const FmtComment *cm, int indent) {
+    const char *p = cm->text;
+    const char *end = cm->text + cm->length;
+    int i;
+
+    for (i = 0; i < indent; i++)
+        fputs("    ", out);
+    while (p < end) {
+        if (*p == '\r') {
+            p++;
+            continue;
+        }
+        if (*p == '\n') {
+            int skip = cm->col;
+            fputc('\n', out);
+            p++;
+            for (i = 0; i < indent; i++)
+                fputs("    ", out);
+            /* 여러 줄 블록 주석은 원래 들여쓰기를 걷어내고 현재 들여쓰기에 맞춘다. */
+            while (p < end && skip > 0 && (*p == ' ' || *p == '\t')) {
+                p++;
+                skip--;
+            }
+            continue;
+        }
+        fputc(*p++, out);
+    }
+    fputc('\n', out);
+}
+
+/* 다음 문장이 line에서 시작하므로, 그 앞에 있는 주석을 먼저 출력한다. */
+static void emit_comments_before(FILE *out, int line, int indent) {
+    if (!g_comment_next || g_skip_indent)
+        return;
+    while (g_comment_next && g_comment_next->line <= line) {
+        emit_comment(out, g_comment_next, indent);
+        g_comment_next = g_comment_next->next;
+    }
+}
+
+static void free_comments(void) {
+    FmtComment *c = g_comments;
+    while (c) {
+        FmtComment *next = c->next;
+        free(c);
+        c = next;
+    }
+    g_comments = NULL;
+    g_comment_next = NULL;
+}
 
 /* 파서의 우선순위 단계. 숫자가 클수록 더 단단히 묶인다. */
 enum {
@@ -29,9 +197,6 @@ static void fmt_expr(FILE *out, expr_ty e, int min_prec);
 static void fmt_stmt(FILE *out, stmt_ty s, int indent);
 static void fmt_type(FILE *out, typeref_ty t);
 static void fmt_ret(FILE *out, ret_ty r);
-
-/* 'export ' 뒤에 이어 쓸 때처럼 이미 줄 앞부분을 출력했다면 들여쓰기를 건너뛴다. */
-static int g_skip_indent;
 
 static void ind(FILE *out, int indent) {
     int i;
@@ -827,10 +992,13 @@ static void fmt_block_body(FILE *out, asdl_seq *body, int indent) {
         fmt_stmt(out, (stmt_ty)asdl_seq_GET(body, i), indent);
 }
 
-/* "{\n <body> <indent>}" 를 출력하고 줄바꿈은 하지 않는다. */
-static void fmt_block_no_nl(FILE *out, asdl_seq *body, int indent) {
+/* "{\n <body> <indent>}" 를 출력하고 줄바꿈은 하지 않는다.
+   end_line이 0보다 크면 그 줄 앞의 주석을 닫는 중괄호 안쪽에 출력한다. */
+static void fmt_block_no_nl(FILE *out, asdl_seq *body, int indent, int end_line) {
     fputs("{\n", out);
     fmt_block_body(out, body, indent + 1);
+    if (end_line > 0)
+        emit_comments_before(out, end_line, indent + 1);
     ind(out, indent);
     fputc('}', out);
 }
@@ -841,7 +1009,7 @@ static void fmt_if(FILE *out, stmt_ty s, int indent, int leading) {
     fputs("if (", out);
     fmt_expr(out, s->v.If.test, 0);
     fputs(") ", out);
-    fmt_block_no_nl(out, s->v.If.body, indent);
+    fmt_block_no_nl(out, s->v.If.body, indent, 0);
     if (asdl_seq_LEN(s->v.If.orelse) == 1) {
         stmt_ty only = (stmt_ty)asdl_seq_GET(s->v.If.orelse, 0);
         if (only->kind == If_kind) {
@@ -852,7 +1020,7 @@ static void fmt_if(FILE *out, stmt_ty s, int indent, int leading) {
     }
     if (asdl_seq_LEN(s->v.If.orelse) > 0) {
         fputs(" else ", out);
-        fmt_block_no_nl(out, s->v.If.orelse, indent);
+        fmt_block_no_nl(out, s->v.If.orelse, indent, s->end_lineno);
     }
     fputc('\n', out);
 }
@@ -993,14 +1161,14 @@ static void fmt_class_member(FILE *out, member_ty m, int indent) {
         fputs(") -> ", out);
         fmt_ret(out, m->v.Method.returns);
         fputc(' ', out);
-        fmt_block_no_nl(out, m->v.Method.body, indent);
+        fmt_block_no_nl(out, m->v.Method.body, indent, m->end_lineno);
         fputc('\n', out);
         break;
     case Constructor_kind:
         fputs("constructor(", out);
         fmt_params(out, m->v.Constructor.params);
         fputs(") ", out);
-        fmt_block_no_nl(out, m->v.Constructor.body, indent);
+        fmt_block_no_nl(out, m->v.Constructor.body, indent, m->end_lineno);
         fputc('\n', out);
         break;
     case Property_kind:
@@ -1015,7 +1183,7 @@ static void fmt_class_member(FILE *out, member_ty m, int indent) {
         fputs("getter ", out);
         fputs(m->v.Getter.name, out);
         fputc(' ', out);
-        fmt_block_no_nl(out, m->v.Getter.body, indent);
+        fmt_block_no_nl(out, m->v.Getter.body, indent, m->end_lineno);
         fputc('\n', out);
         break;
     case Setter_kind:
@@ -1026,7 +1194,7 @@ static void fmt_class_member(FILE *out, member_ty m, int indent) {
         fputc(' ', out);
         fputs(m->v.Setter.param->name, out);
         fputs(") ", out);
-        fmt_block_no_nl(out, m->v.Setter.body, indent);
+        fmt_block_no_nl(out, m->v.Setter.body, indent, m->end_lineno);
         fputc('\n', out);
         break;
     }
@@ -1060,7 +1228,7 @@ static void fmt_struct_member(FILE *out, struct_member_ty m, const char *tag, in
             }
         }
         fputc(' ', out);
-        fmt_block_no_nl(out, m->v.StructCtor.body, indent);
+        fmt_block_no_nl(out, m->v.StructCtor.body, indent, 0);
         fputc('\n', out);
         break;
     }
@@ -1068,8 +1236,11 @@ static void fmt_struct_member(FILE *out, struct_member_ty m, const char *tag, in
 
 static void fmt_member_list(FILE *out, asdl_seq *members, int indent) {
     size_t i;
-    for (i = 0; i < asdl_seq_LEN(members); i++)
-        fmt_class_member(out, (member_ty)asdl_seq_GET(members, i), indent);
+    for (i = 0; i < asdl_seq_LEN(members); i++) {
+        member_ty m = (member_ty)asdl_seq_GET(members, i);
+        emit_comments_before(out, m->lineno, indent);
+        fmt_class_member(out, m, indent);
+    }
 }
 
 static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
@@ -1077,6 +1248,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
 
     if (!s)
         return;
+    emit_comments_before(out, s->lineno, indent);
     switch (s->kind) {
     case FunctionDef_kind:
         ind(out, indent);
@@ -1102,7 +1274,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
         fputs(") -> ", out);
         fmt_ret(out, s->v.FunctionDef.returns);
         fputc(' ', out);
-        fmt_block_no_nl(out, s->v.FunctionDef.body, indent);
+        fmt_block_no_nl(out, s->v.FunctionDef.body, indent, s->end_lineno);
         fputc('\n', out);
         break;
     case ClassDef_kind:
@@ -1125,6 +1297,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
         }
         fputs(" {\n", out);
         fmt_member_list(out, s->v.ClassDef.members, indent + 1);
+        emit_comments_before(out, s->end_lineno, indent + 1);
         ind(out, indent);
         fputs("}\n", out);
         break;
@@ -1147,6 +1320,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
             fmt_ret(out, m->returns);
             fputs(";\n", out);
         }
+        emit_comments_before(out, s->end_lineno, indent + 1);
         ind(out, indent);
         fputs("}\n", out);
         break;
@@ -1161,6 +1335,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
                 fmt_struct_member(out, (struct_member_ty)asdl_seq_GET(
                                            s->v.StructDef.members, i),
                                   s->v.StructDef.tag, indent + 1);
+            emit_comments_before(out, s->end_lineno, indent + 1);
             ind(out, indent);
             fputs("} ", out);
             fputs(s->v.StructDef.alias, out);
@@ -1174,6 +1349,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
                 fmt_struct_member(out, (struct_member_ty)asdl_seq_GET(
                                            s->v.StructDef.members, i),
                                   s->v.StructDef.tag, indent + 1);
+            emit_comments_before(out, s->end_lineno, indent + 1);
             ind(out, indent);
             fputs("};\n", out);
         }
@@ -1260,7 +1436,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
         fputs("while (", out);
         fmt_expr(out, s->v.While.test, 0);
         fputs(") ", out);
-        fmt_block_no_nl(out, s->v.While.body, indent);
+        fmt_block_no_nl(out, s->v.While.body, indent, s->end_lineno);
         fputc('\n', out);
         break;
     case For_kind:
@@ -1272,7 +1448,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
         fputs("; ", out);
         fmt_inline_stmt(out, s->v.For.step);
         fputs(") ", out);
-        fmt_block_no_nl(out, s->v.For.body, indent);
+        fmt_block_no_nl(out, s->v.For.body, indent, s->end_lineno);
         fputc('\n', out);
         break;
     case ForRange_kind:
@@ -1292,7 +1468,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
             fmt_expr(out, s->v.ForRange.iter->step, P_ADD);
         }
         fputs(") ", out);
-        fmt_block_no_nl(out, s->v.ForRange.body, indent);
+        fmt_block_no_nl(out, s->v.ForRange.body, indent, s->end_lineno);
         fputc('\n', out);
         break;
     case ForIn_kind:
@@ -1304,7 +1480,7 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
         fputs(" in ", out);
         fmt_expr(out, s->v.ForIn.iter, 0);
         fputs(") ", out);
-        fmt_block_no_nl(out, s->v.ForIn.body, indent);
+        fmt_block_no_nl(out, s->v.ForIn.body, indent, s->end_lineno);
         fputc('\n', out);
         break;
     case Switch_kind:
@@ -1328,16 +1504,17 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
                 }
                 fputc(' ', out);
             }
-            fmt_block_no_nl(out, c->body, indent + 1);
+            fmt_block_no_nl(out, c->body, indent + 1, 0);
             fputc('\n', out);
         }
+        emit_comments_before(out, s->end_lineno, indent + 1);
         ind(out, indent);
         fputs("}\n", out);
         break;
     case Try_kind:
         ind(out, indent);
         fputs("try ", out);
-        fmt_block_no_nl(out, s->v.Try.body, indent);
+        fmt_block_no_nl(out, s->v.Try.body, indent, 0);
         for (i = 0; i < asdl_seq_LEN(s->v.Try.handlers); i++) {
             handler_ty h = (handler_ty)asdl_seq_GET(s->v.Try.handlers, i);
             fputs(" catch (", out);
@@ -1345,11 +1522,11 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
             fputc(' ', out);
             fputs(h->name, out);
             fputs(") ", out);
-            fmt_block_no_nl(out, h->body, indent);
+            fmt_block_no_nl(out, h->body, indent, 0);
         }
         if (asdl_seq_LEN(s->v.Try.finalbody) > 0) {
             fputs(" finally ", out);
-            fmt_block_no_nl(out, s->v.Try.finalbody, indent);
+            fmt_block_no_nl(out, s->v.Try.finalbody, indent, s->end_lineno);
         }
         fputc('\n', out);
         break;
@@ -1450,11 +1627,21 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
     }
 }
 
-void Aster_FormatModule(FILE *out, mod_ty mod) {
+void Aster_FormatModule(FILE *out, mod_ty mod, const char *source) {
     size_t i;
 
-    if (!mod)
+    g_skip_indent = 0;
+    g_comments = NULL;
+    g_comment_next = NULL;
+    if (source) {
+        scan_comments(source, strlen(source));
+        g_comment_next = g_comments;
+    }
+
+    if (!mod) {
+        free_comments();
         return;
+    }
     if (asdl_seq_LEN(mod->v.Module.package) > 0) {
         fputs("package ", out);
         fmt_dotted(out, mod->v.Module.package);
@@ -1462,4 +1649,7 @@ void Aster_FormatModule(FILE *out, mod_ty mod) {
     }
     for (i = 0; i < asdl_seq_LEN(mod->v.Module.body); i++)
         fmt_stmt(out, (stmt_ty)asdl_seq_GET(mod->v.Module.body, i), 0);
+    /* 파일 끝에 남은 주석을 마저 출력한다. */
+    emit_comments_before(out, 2147483647, 0);
+    free_comments();
 }

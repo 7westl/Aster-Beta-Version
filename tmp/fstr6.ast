@@ -1,0 +1,4 @@
+import System.stdout.*;
+println("a");
+println(f"x={0}");
+println("b");

@@ -1,0 +1,2 @@
+println(f"n={0}");
+println("after");

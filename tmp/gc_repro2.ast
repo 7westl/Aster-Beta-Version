@@ -1,0 +1,3 @@
+enum Color { RED, GREEN, BLUE; public fn next(int n) -> int { return helper(self, n); } }
+fn helper(Color c, int n) -> int { return c.ordinal + n % 7; }
+println(Color.RED.next(1));

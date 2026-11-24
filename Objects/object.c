@@ -2,15 +2,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include "internal/object.h"
+#include "internal/gc.h"
 #include "internal/unicode_ranges.h"
 
-static void *xmalloc(size_t n) {
-    void *p = malloc(n ? n : 1);
-    if (!p) {
-        fputs("out of memory\n", stderr);
-        abort();
-    }
-    return p;
+/* 문자열은 GC 힙에 만든다. 파서가 만든 리터럴은 고정(pin)되어 AST와 함께 산다. */
+static AsterString *string_alloc(size_t n) {
+    AsterString *o = Aster_GC_Alloc(sizeof(AsterString) + n + 1, GK_STRING);
+    o->ob.kind = ASTER_OBJ_STRING;
+    o->length = n;
+    return o;
 }
 
 uint32_t Aster_UTF8_Decode(const char *s, size_t n, size_t *advance) {
@@ -288,9 +288,7 @@ int Aster_IsSpaceCP(uint32_t cp) {
 }
 
 AsterString *AsterString_FromUTF8(const char *s, size_t n) {
-    AsterString *o = xmalloc(sizeof(AsterString) + n + 1);
-    o->ob.kind = ASTER_OBJ_STRING;
-    o->length = n;
+    AsterString *o = string_alloc(n);
     o->cp_length = count_code_points(s, n);
     if (n)
         memcpy(o->data, s, n);
@@ -304,10 +302,8 @@ AsterString *AsterString_FromCStr(const char *s) {
 
 AsterString *AsterString_Concat(const AsterString *a, const AsterString *b) {
     size_t n = a->length + b->length;
-    AsterString *o = xmalloc(sizeof(AsterString) + n + 1);
+    AsterString *o = string_alloc(n);
 
-    o->ob.kind = ASTER_OBJ_STRING;
-    o->length = n;
     o->cp_length = a->cp_length + b->cp_length;
     if (a->length)
         memcpy(o->data, a->data, a->length);

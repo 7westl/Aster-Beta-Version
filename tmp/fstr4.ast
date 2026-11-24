@@ -1,0 +1,3 @@
+import System.stdout.*;
+println("n=");
+println(f"n={0}");
