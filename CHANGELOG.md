@@ -4,6 +4,42 @@ All notable changes to Aster are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Pointer values now render with their raw slot address in lowercase hexadecimal
+  (`<pointer 0x...>`) instead of `<pointer>` when printed or converted with `str`.
+- The bytecode VM now reuses per-iteration block environments instead of building
+  a new one each pass, skips them entirely when a loop body declares no locals,
+  and runs `obj.method(...)` through a dedicated call instruction that does not
+  allocate a bound method value.
+- Compiled bytecode for a method body is cached once per defining function, so
+  bound method calls no longer recompile on every invocation.
+- Calls with only positional arguments and no defaults or variadics bind
+  parameters directly, without a temporary argument array.
+- `switch` and the list/set/dict comprehensions now compile to bytecode instead
+  of falling back to the tree walker. Switch cases keep their pattern-match
+  semantics (literal, wildcard/`bind`, `when` guards) and comprehension
+  accumulators are built on the VM stack; only variant, list, and dict patterns
+  still delegate to the tree walker.
+- `try`/`catch` without a `finally` block now runs on the VM: the compiler emits
+  a handler record for the block, `catch (T e)` type tests run without leaving
+  the VM, and a non-matching exception re-throws with the traceback intact.
+  `break`/`continue` inside a `try` drop its handler record so later throws in
+  the same loop are not caught by a stale one.
+- `obj.method(...)` call sites cache the method resolved for the last receiver
+  class, so repeated calls on the same class skip property/field/method scans and
+  allocate no bound method value. Methods whose body never mentions `super` also
+  skip binding it, which removes two GC allocations per call.
+
+### Changed
+
+- The GC allocator now serves small blocks from size-class free lists backed by
+  slabs instead of calling `malloc`/`free` per object, which cuts allocation cost
+  in allocation-heavy loops while keeping the mark-sweep collector and its
+  stress/diagnostic modes unchanged.
+
 ## [Beta 2.0.0]
 
 ### Added

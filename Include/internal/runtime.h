@@ -218,8 +218,10 @@ struct AstFn {
     int is_generator;        /* 본문에 yield가 있다 */
     int env_reuse;           /* 0=미검사, 1=호출 환경 재사용 가능, -1=불가 */
     int env_bind_sites;      /* 0=미검사, 그 외=함수 환경에 직접 정의되는 바인딩 수+1 */
+    int uses_super;          /* 0=미검사, 1=본문이 super를 쓴다, -1=안 쓴다 */
     void *bc;                /* 컴파일된 바이트코드 (BcProto), 없으면 NULL */
     int bc_state;            /* 0=미시도, 1=컴파일됨, -1=트리 워크 */
+    struct AstFn *bc_origin; /* 메서드 바인딩 사본이면 원본 함수 (캐시 공유) */
     AstBuiltin builtin;      /* FN_BUILTIN */
 };
 

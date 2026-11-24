@@ -2551,7 +2551,7 @@ static void render_value(Buf *b, const RValue *v, int repr, int depth) {
         buf_printf(b, "<builtin %s>", v->u.builtin->name);
         break;
     case RV_PTR:
-        buf_puts(b, "<pointer>");
+        buf_printf(b, "<pointer 0x%llx>", (unsigned long long)(uintptr_t)v->u.ptr.slot);
         break;
     case RV_EXC: {
         const RValue *msg = v->u.exc->message;

@@ -471,6 +471,356 @@ static int body_escapes_env(asdl_seq *body) {
     return 0;
 }
 
+/*
+ * 함수 본문이 이름 super를 쓰는지 한 번만 훑는다. 쓰지 않는 메서드에는
+ * super 바인딩(RValue_Super는 GC 객체 둘을 만든다)을 건너뛰어 호출을
+ * 가볍게 한다. 알 수 없는 노드는 보수적으로 "쓴다"로 본다.
+ */
+static int expr_refs_super(expr_ty e);
+static int stmts_ref_super(asdl_seq *body);
+
+static int exprs_ref_super(asdl_seq *seq) {
+    size_t i;
+    for (i = 0; i < asdl_seq_LEN(seq); i++) {
+        if (expr_refs_super((expr_ty)asdl_seq_GET(seq, i)))
+            return 1;
+    }
+    return 0;
+}
+
+static int init_refs_super(initializer_ty init) {
+    size_t i;
+    if (!init)
+        return 0;
+    switch (init->kind) {
+    case NoInit_kind:
+        return 0;
+    case ExprInit_kind:
+        return expr_refs_super(init->v.ExprInit.value);
+    case PositionalInit_kind:
+        return exprs_ref_super(init->v.PositionalInit.values);
+    case DesignatedInit_kind:
+        for (i = 0; i < asdl_seq_LEN(init->v.DesignatedInit.items); i++) {
+            designation_ty d = asdl_seq_GET(init->v.DesignatedInit.items, i);
+            if (expr_refs_super(d->value))
+                return 1;
+        }
+        return 0;
+    }
+    return 1;
+}
+
+static int pattern_refs_super(match_pattern_ty p) {
+    size_t i;
+    if (!p)
+        return 0;
+    switch (p->kind) {
+    case PLiteral_kind:
+        return expr_refs_super(p->v.PLiteral.value);
+    case PVariant_kind:
+        return expr_refs_super(p->v.PVariant.path) ||
+               exprs_ref_super(p->v.PVariant.items);
+    case PBind_kind:
+        return 0;
+    case PList_kind:
+        for (i = 0; i < asdl_seq_LEN(p->v.PList.items); i++)
+            if (pattern_refs_super(asdl_seq_GET(p->v.PList.items, i)))
+                return 1;
+        return 0;
+    case PDict_kind:
+        for (i = 0; i < asdl_seq_LEN(p->v.PDict.items); i++) {
+            pdict_item_ty d = asdl_seq_GET(p->v.PDict.items, i);
+            if (expr_refs_super(d->key) || pattern_refs_super(d->value))
+                return 1;
+        }
+        return 0;
+    }
+    return 1;
+}
+
+static int members_ref_super(asdl_seq *members) {
+    size_t i;
+    for (i = 0; i < asdl_seq_LEN(members); i++) {
+        member_ty m = asdl_seq_GET(members, i);
+        switch (m->kind) {
+        case Field_kind:
+            if (expr_refs_super(m->v.Field.value))
+                return 1;
+            break;
+        case Method_kind:
+            if (stmts_ref_super(m->v.Method.body))
+                return 1;
+            break;
+        case Constructor_kind:
+            if (stmts_ref_super(m->v.Constructor.body))
+                return 1;
+            break;
+        case Property_kind:
+            break;
+        case Getter_kind:
+            if (stmts_ref_super(m->v.Getter.body))
+                return 1;
+            break;
+        case Setter_kind:
+            if (stmts_ref_super(m->v.Setter.body))
+                return 1;
+            break;
+        default:
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int struct_members_ref_super(asdl_seq *members) {
+    size_t i;
+    for (i = 0; i < asdl_seq_LEN(members); i++) {
+        struct_member_ty m = asdl_seq_GET(members, i);
+        switch (m->kind) {
+        case StructField_kind:
+            break;
+        case StructCtor_kind:
+            for (i = 0; i < asdl_seq_LEN(m->v.StructCtor.inits); i++) {
+                member_init_ty mi = asdl_seq_GET(m->v.StructCtor.inits, i);
+                if (expr_refs_super(mi->value))
+                    return 1;
+            }
+            if (stmts_ref_super(m->v.StructCtor.body))
+                return 1;
+            break;
+        default:
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int expr_refs_super(expr_ty e) {
+    size_t i;
+    if (!e)
+        return 0;
+    switch (e->kind) {
+    case Name_kind:
+        return !strcmp(e->v.Name.id, "super");
+    case Lambda_kind:
+        /* 람다는 바깥 메서드 환경의 super를 닫아 쓸 수 있다. */
+        return expr_refs_super(e->v.Lambda.body);
+    case Pipe_kind:
+        return expr_refs_super(e->v.Pipe.value) || expr_refs_super(e->v.Pipe.func);
+    case Ternary_kind:
+        return expr_refs_super(e->v.Ternary.test) ||
+               expr_refs_super(e->v.Ternary.body) ||
+               expr_refs_super(e->v.Ternary.orelse);
+    case Coalesce_kind:
+        return expr_refs_super(e->v.Coalesce.left) ||
+               expr_refs_super(e->v.Coalesce.right);
+    case BoolOp_kind:
+        return expr_refs_super(e->v.BoolOp.left) || expr_refs_super(e->v.BoolOp.right);
+    case UnaryOp_kind:
+        return expr_refs_super(e->v.UnaryOp.operand);
+    case BinOp_kind:
+        return expr_refs_super(e->v.BinOp.left) || expr_refs_super(e->v.BinOp.right);
+    case Compare_kind:
+        return expr_refs_super(e->v.Compare.left) || expr_refs_super(e->v.Compare.right);
+    case Is_kind:
+        return expr_refs_super(e->v.Is.value);
+    case In_kind:
+        return expr_refs_super(e->v.In.item) || expr_refs_super(e->v.In.container);
+    case Cast_kind:
+        return expr_refs_super(e->v.Cast.value);
+    case AddressOf_kind:
+        return expr_refs_super(e->v.AddressOf.value);
+    case Deref_kind:
+        return expr_refs_super(e->v.Deref.value);
+    case SizeOf_kind:
+        return 0;
+    case Call_kind:
+        if (expr_refs_super(e->v.Call.func) || exprs_ref_super(e->v.Call.args))
+            return 1;
+        for (i = 0; i < asdl_seq_LEN(e->v.Call.keywords); i++) {
+            keyword_ty kw = asdl_seq_GET(e->v.Call.keywords, i);
+            if (expr_refs_super(kw->value))
+                return 1;
+        }
+        return 0;
+    case New_kind:
+        return exprs_ref_super(e->v.New.args);
+    case Attribute_kind:
+        return expr_refs_super(e->v.Attribute.value);
+    case PtrAttribute_kind:
+        return expr_refs_super(e->v.PtrAttribute.value);
+    case OptionalAttribute_kind:
+        return expr_refs_super(e->v.OptionalAttribute.value);
+    case Self_kind:
+    case Constant_kind:
+        return 0;
+    case Array_kind:
+        return exprs_ref_super(e->v.Array.elements);
+    case Range_kind:
+        return expr_refs_super(e->v.Range.start) || expr_refs_super(e->v.Range.stop) ||
+               expr_refs_super(e->v.Range.step);
+    case Subscript_kind:
+        return expr_refs_super(e->v.Subscript.value) ||
+               expr_refs_super(e->v.Subscript.index);
+    case Slice_kind:
+        return expr_refs_super(e->v.Slice.lower) ||
+               expr_refs_super(e->v.Slice.upper) ||
+               expr_refs_super(e->v.Slice.step);
+    case FString_kind:
+        return exprs_ref_super(e->v.FString.values);
+    case FormattedValue_kind:
+        return expr_refs_super(e->v.FormattedValue.value) ||
+               expr_refs_super(e->v.FormattedValue.format_spec);
+    case List_kind:
+        return exprs_ref_super(e->v.List.elements);
+    case Tuple_kind:
+        return exprs_ref_super(e->v.Tuple.elements);
+    case Dict_kind:
+        if (exprs_ref_super(e->v.Dict.keys))
+            return 1;
+        for (i = 0; i < asdl_seq_LEN(e->v.Dict.values); i++)
+            if (expr_refs_super((expr_ty)asdl_seq_GET(e->v.Dict.values, i)))
+                return 1;
+        return 0;
+    case Set_kind:
+        return exprs_ref_super(e->v.Set.elements);
+    case Spread_kind:
+        return expr_refs_super(e->v.Spread.value);
+    case ListComp_kind:
+        return expr_refs_super(e->v.ListComp.elt) || expr_refs_super(e->v.ListComp.iter) ||
+               expr_refs_super(e->v.ListComp.cond);
+    case SetComp_kind:
+        return expr_refs_super(e->v.SetComp.elt) || expr_refs_super(e->v.SetComp.iter) ||
+               expr_refs_super(e->v.SetComp.cond);
+    case DictComp_kind:
+        return expr_refs_super(e->v.DictComp.key) ||
+               expr_refs_super(e->v.DictComp.value) ||
+               expr_refs_super(e->v.DictComp.iter) ||
+               expr_refs_super(e->v.DictComp.cond);
+    case Incr_kind:
+        return expr_refs_super(e->v.Incr.target);
+    }
+    return 1;
+}
+
+static int stmt_refs_super(stmt_ty s) {
+    size_t i;
+    if (!s)
+        return 0;
+    switch (s->kind) {
+    case FunctionDef_kind:
+        return stmts_ref_super(s->v.FunctionDef.body);
+    case ClassDef_kind:
+        return members_ref_super(s->v.ClassDef.members);
+    case InterfaceDef_kind:
+        return 0;
+    case StructDef_kind:
+        return struct_members_ref_super(s->v.StructDef.members);
+    case VarDecl_kind:
+        return init_refs_super(s->v.VarDecl.init);
+    case EnumDef_kind:
+        for (i = 0; i < asdl_seq_LEN(s->v.EnumDef.members); i++) {
+            enum_member_ty m = asdl_seq_GET(s->v.EnumDef.members, i);
+            if (expr_refs_super(m->value))
+                return 1;
+        }
+        return members_ref_super(s->v.EnumDef.methods);
+    case Destructure_kind:
+        return expr_refs_super(s->v.Destructure.value);
+    case Assert_kind:
+        return expr_refs_super(s->v.Assert.test) || expr_refs_super(s->v.Assert.message);
+    case Assign_kind:
+        return expr_refs_super(s->v.Assign.target) ||
+               expr_refs_super(s->v.Assign.value);
+    case If_kind:
+        return expr_refs_super(s->v.If.test) ||
+               stmts_ref_super(s->v.If.body) || stmts_ref_super(s->v.If.orelse);
+    case While_kind:
+        return expr_refs_super(s->v.While.test) || stmts_ref_super(s->v.While.body);
+    case For_kind:
+        return stmt_refs_super(s->v.For.init) || expr_refs_super(s->v.For.test) ||
+               stmt_refs_super(s->v.For.step) || stmts_ref_super(s->v.For.body);
+    case ForRange_kind:
+        return expr_refs_super(s->v.ForRange.iter->start) ||
+               expr_refs_super(s->v.ForRange.iter->stop) ||
+               expr_refs_super(s->v.ForRange.iter->step) ||
+               stmts_ref_super(s->v.ForRange.body);
+    case ForIn_kind:
+        return expr_refs_super(s->v.ForIn.iter) || stmts_ref_super(s->v.ForIn.body);
+    case Switch_kind:
+        if (expr_refs_super(s->v.Switch.subject))
+            return 1;
+        for (i = 0; i < asdl_seq_LEN(s->v.Switch.cases); i++) {
+            match_case_ty mc = asdl_seq_GET(s->v.Switch.cases, i);
+            if (pattern_refs_super(mc->pattern) || expr_refs_super(mc->guard) ||
+                stmts_ref_super(mc->body))
+                return 1;
+        }
+        return 0;
+    case Try_kind:
+        if (stmts_ref_super(s->v.Try.body) || stmts_ref_super(s->v.Try.finalbody))
+            return 1;
+        for (i = 0; i < asdl_seq_LEN(s->v.Try.handlers); i++) {
+            handler_ty h = asdl_seq_GET(s->v.Try.handlers, i);
+            if (stmts_ref_super(h->body))
+                return 1;
+        }
+        return 0;
+    case Yield_kind:
+        return expr_refs_super(s->v.Yield.value);
+    case Return_kind:
+        return expr_refs_super(s->v.Return.value);
+    case Throw_kind:
+        return expr_refs_super(s->v.Throw.value);
+    case Break_kind:
+    case Continue_kind:
+    case Import_kind:
+    case ImportFrom_kind:
+        return 0;
+    case Export_kind:
+        return stmt_refs_super(s->v.Export.body);
+    case ExceptionDef_kind:
+        return 0;
+    case ExprStmt_kind:
+        return expr_refs_super(s->v.ExprStmt.value);
+    }
+    return 1;
+}
+
+static int stmts_ref_super(asdl_seq *body) {
+    size_t i;
+    for (i = 0; i < asdl_seq_LEN(body); i++) {
+        if (stmt_refs_super((stmt_ty)asdl_seq_GET(body, i)))
+            return 1;
+    }
+    return 0;
+}
+
+/* 매개변수 기본값은 호출 환경에서 평가되므로 self/super를 볼 수 있다. */
+static int params_ref_super(AstFn *fn) {
+    size_t i;
+    if (fn->params_are_lambda)
+        return 0;
+    for (i = 0; i < asdl_seq_LEN(fn->params); i++) {
+        param_ty p = asdl_seq_GET(fn->params, i);
+        if (expr_refs_super(p->default_value))
+            return 1;
+    }
+    return 0;
+}
+
+static int fn_refs_super(AstFn *fn) {
+    AstFn *owner = fn->bc_origin ? fn->bc_origin : fn;
+
+    if (owner->uses_super == 0) {
+        int uses = fn->kind == FN_LAMBDA ? expr_refs_super(fn->body_expr)
+                                         : (stmts_ref_super(fn->body) ||
+                                            params_ref_super(fn));
+        owner->uses_super = uses ? 1 : -1;
+    }
+    return owner->uses_super > 0;
+}
+
 static AstFn *make_fn(Interp *in, Env *env, const char *name, asdl_seq *params,
                       int lambda_params, ret_ty ret, asdl_seq *body, expr_ty body_expr) {
     AstFn *fn = Arena_Alloc(in->arena, sizeof(AstFn));
@@ -493,6 +843,8 @@ static AstFn *bind_method(Interp *in, AstFn *fn, RValue *self) {
     (void)in;
     *bound = *fn;
     bound->self = self;
+    /* 실행 중 만들어지는 사본이므로, 컴파일 캐시는 원본과 공유한다. */
+    bound->bc_origin = fn->bc_origin ? fn->bc_origin : fn;
     return bound;
 }
 
@@ -590,6 +942,36 @@ static int bind_params_ex(Interp *in, AstFn *fn, Env *env, RValue **args, size_t
             Env_Define(in, env, p->name, RValue_Copy(in, lslot[i]));
         }
         return 1;
+    }
+    /* 가장 흔한 호출 모양(위치 인자만, 기본값·가변 인자 없음)은 임시 배열을
+       만들지 않고 바로 환경에 정의한다. */
+    if (nkw == 0) {
+        int simple = 1;
+        for (i = 0; i < nparams; i++) {
+            param_ty sp = asdl_seq_GET(fn->params, i);
+            if (sp->variadic || sp->default_value) {
+                simple = 0;
+                break;
+            }
+        }
+        if (simple) {
+            if (nargs > nparams) {
+                RT_Throw(in, "TypeError", "'%s' takes %zu argument(s) but %zu were given",
+                         fname, nparams, nargs);
+                return 0;
+            }
+            for (i = 0; i < nargs; i++) {
+                param_ty sp = asdl_seq_GET(fn->params, i);
+                Env_Define(in, env, sp->name, RValue_Copy(in, args[i]));
+            }
+            if (nargs < nparams) {
+                param_ty sp = asdl_seq_GET(fn->params, nargs);
+                RT_Throw(in, "TypeError", "'%s' missing required argument '%s'", fname,
+                         sp->name);
+                return 0;
+            }
+            return 1;
+        }
     }
     for (i = 0; i < nparams; i++) {
         param_ty p = asdl_seq_GET(fn->params, i);
@@ -744,14 +1126,17 @@ static int fn_env_bind_sites(AstFn *fn) {
 
 /* 함수 본문을 바이트코드로 한 번만 컴파일해 재사용한다. 실패하면 트리 워크. */
 static BcProto *fn_body_proto(Interp *in, AstFn *fn) {
+    AstFn *owner = fn->bc_origin ? fn->bc_origin : fn;
+
     if (!in->use_vm || in->debug || fn->is_generator)
         return NULL;
-    if (fn->bc_state == 0) {
-        fn->bc = fn->kind == FN_LAMBDA ? (void *)VM_CompileExpr(in, fn->body_expr)
-                                       : (void *)VM_CompileBody(in, fn->body);
-        fn->bc_state = fn->bc ? 1 : -1;
+    if (owner->bc_state == 0) {
+        owner->bc = fn->kind == FN_LAMBDA
+                        ? (void *)VM_CompileExpr(in, owner->body_expr)
+                        : (void *)VM_CompileBody(in, owner->body);
+        owner->bc_state = owner->bc ? 1 : -1;
     }
-    return fn->bc_state == 1 ? (BcProto *)fn->bc : NULL;
+    return owner->bc_state == 1 ? (BcProto *)owner->bc : NULL;
 }
 
 /* 모듈 본문처럼 한 번만 실행되는 블록. 컴파일이 안 되면 트리 워크로 넘긴다. */
@@ -805,8 +1190,10 @@ static RValue *call_fn_ex(Interp *in, AstFn *fn, RValue **args, size_t nargs,
         env = Env_NewCall(in, fn->env, nspare);
     if (fn->self) {
         Env_Define(in, env, "self", fn->self);
-        Env_Define(in, env, "super",
-                   RValue_Super(in, fn->owner, fn->self));
+        /* super를 안 쓰는 메서드에는 바인딩을 건너뛴다 (호출당 GC 할당 2개 절약). */
+        if (fn_refs_super(fn))
+            Env_Define(in, env, "super",
+                       RValue_Super(in, fn->owner, fn->self));
     }
     if (!bind_params_ex(in, fn, env, args, nargs, kwn, kwv, nkw)) {
         in->depth--;
@@ -1844,6 +2231,76 @@ static RValue *get_attr(Interp *in, RValue *base, const char *name) {
     default:
         return RT_ThrowValue(in, "AttributeError", "this value has no attribute '%s'", name);
     }
+}
+
+/* obj.method(...)의 빠른 경로. 메서드가 확정되면 묶인 함수 값을 만들지 않고
+   바로 호출하고, 그 밖의 경우(속성, 필드에 담긴 함수, 오버로드, 모듈 등)는
+   get_attr + 호출 경로로 넘겨 오류 메시지와 의미를 그대로 유지한다. */
+static int class_has_instance_field(AstClass *cls, const char *name) {
+    size_t i;
+    for (; cls; cls = cls->base) {
+        for (i = 0; i < cls->nfields; i++) {
+            if (!cls->fields[i].is_static && !strcmp(cls->fields[i].name, name))
+                return 1;
+        }
+    }
+    return 0;
+}
+
+/* VM 호출 지점 캐시: 이 클래스에서 name이 속성/필드에 가리지 않는 단일
+   메서드면 그 함수를 돌려준다. 클래스 정의는 실행 후 바뀌지 않는다. */
+int Interp_ResolveMethod(AstClass *cls, const char *name, AstFn **fn) {
+    MethodDesc *method;
+
+    if (!cls || Class_FindProperty(cls, name))
+        return 0;
+    if (class_has_instance_field(cls, name))
+        return 0;
+    method = Class_FindMethod(cls, name);
+    if (!method || method->overload)
+        return 0;
+    *fn = method->fn;
+    return 1;
+}
+
+/* 묶인 메서드 사본을 힙에 만들지 않고 호출한다. 생성자는 함수 값을
+   붙잡으므로 그때만 사본을 만든다. */
+RValue *Interp_CallMethodFast(Interp *in, AstFn *fn, RValue *self, RValue **args,
+                              size_t nargs) {
+    AstFn bound;
+
+    if (fn->is_generator)
+        return call_fn(in, bind_method(in, fn, self), args, nargs);
+    bound = *fn;
+    bound.self = self;
+    bound.bc_origin = fn->bc_origin ? fn->bc_origin : fn;
+    return call_fn(in, &bound, args, nargs);
+}
+
+RValue *Interp_CallAttr(Interp *in, RValue *base, const char *name,
+                        RValue **args, size_t nargs) {
+    RValue *self = base;
+    RValue *callee;
+
+    if (in->sig != SIG_OK)
+        return NULL;
+    if (self && self->kind == RV_PTR)
+        self = self->u.ptr.slot ? *self->u.ptr.slot : NULL;
+    if (self && self->kind == RV_OBJECT) {
+        AstInstance *obj = self->u.obj;
+        if (!Class_FindProperty(obj->cls, name)) {
+            InstField *field = Instance_FindField(obj, name);
+            if (!field) {
+                MethodDesc *method = Class_FindMethod(obj->cls, name);
+                if (method && !method->overload)
+                    return call_fn(in, bind_method(in, method->fn, self), args, nargs);
+            }
+        }
+    }
+    callee = get_attr(in, base, name);
+    if (!callee)
+        return NULL;
+    return Interp_CallValueEx(in, callee, args, nargs, NULL, NULL, 0);
 }
 
 /* ---- 타입 검사/캐스트 ---- */
@@ -3605,6 +4062,15 @@ static int body_declares_names(asdl_seq *body) {
         if (stmt_declares_names(asdl_seq_GET(body, i)))
             return 1;
     return 0;
+}
+
+/* VM 컴파일러가 블록 환경 생성·풀 재사용 여부를 정할 때 쓰는 공개 래퍼. */
+int Interp_BodyDeclaresNames(asdl_seq *body) {
+    return body_declares_names(body);
+}
+
+int Interp_BodyEscapesEnv(asdl_seq *body) {
+    return body_escapes_env(body);
 }
 
 static Signal exec_while(Interp *in, stmt_ty s, Env *env) {
@@ -5589,6 +6055,13 @@ RValue *Interp_GetAttr(Interp *in, RValue *base, const char *name) {
 
 RValue *Interp_IsType(Interp *in, RValue *value, typeref_ty ty) {
     return RValue_Bool(in, value_is_type(in, value, ty));
+}
+
+/* VM catch 진입점: 지금 풀려 나가는 예외가 잡으려는 타입과 맞는지. */
+int Interp_ExceptionMatches(Interp *in, typeref_ty ty) {
+    if (!in->exc || in->exc->kind != RV_EXC)
+        return 0;
+    return Exception_Matches(in, in->exc->u.exc->name, typeref_name(ty));
 }
 
 RValue *Interp_Cast(Interp *in, typeref_ty ty, RValue *value) {

@@ -47,6 +47,12 @@ enum BcOp {
     BC_GETITEM,
     BC_CALL,         /* a=인자 수 */
     BC_CALL_KW,      /* a=호출 설명 번호 */
+    BC_CALL_METHOD,  /* a=이름 번호, b=인자 수 (수신자, 인자...) */
+    BC_DUP,
+    BC_BIND,         /* a=이름 번호: 값을 꺼내 현재 환경에 정의 */
+    BC_LIST_APPEND,  /* 값을 꺼내 스택 아래 리스트에 덧붙인다 */
+    BC_SET_ADD,      /* 값을 꺼내 스택 아래 집합에 넣는다 */
+    BC_DICT_SET,     /* 키·값을 꺼내 스택 아래 사전에 쓴다 */
     BC_DELEGATE_EXPR,/* p=expr */
     BC_DELEGATE_STMT,/* p=stmt */
     BC_EXPR_POP,
@@ -69,7 +75,12 @@ enum BcOp {
     BC_BREAK,
     BC_CONTINUE,
     BC_LINE,         /* 문장 시작: 줄 번호/프레임 갱신 */
-    BC_END
+    BC_END,
+    BC_TRY_PUSH,     /* a=catch 진입점: 처리기 기록을 쌓는다 */
+    BC_TRY_POP,
+    BC_EXC_MATCH,    /* a=다음 처리기, p=typeref: 현재 예외가 맞지 않으면 점프 */
+    BC_EXC_BIND,     /* a=이름 번호: 현재 예외를 꺼내 환경에 정의 */
+    BC_RETHROW
 };
 
 typedef struct {
@@ -77,6 +88,8 @@ typedef struct {
     int a, b, c, d;
     const void *p;
     int line, col, span;
+    AstClass *ic_cls;   /* BC_CALL_METHOD: 마지막 수신자 클래스 */
+    AstFn *ic_fn;       /* BC_CALL_METHOD: 그 클래스에서 찾은 메서드 (없으면 NULL) */
 } BcInsn;
 
 typedef struct {
@@ -104,12 +117,14 @@ struct BcProto {
     size_t ncalls, kcap;
     int max_blocks;
     int max_loops;
+    int max_try;
 };
 
 /* ---- 컴파일 ---- */
 
 #define BC_MAX_BLOCKS 256
 #define BC_MAX_LOOPS 64
+#define BC_MAX_TRY 32
 
 typedef struct BcLoopCtx {
     struct BcLoopCtx *prev;
@@ -124,11 +139,14 @@ typedef struct {
     int max_depth;
     int loop_depth;
     int max_loop_depth;
+    int try_depth;
+    int max_try_depth;
     BcLoopCtx *loop;
 } BcCtx;
 
 static void bc_expr(BcCtx *c, expr_ty e);
 static void bc_stmt(BcCtx *c, stmt_ty s);
+static void compile_comprehension(BcCtx *c, expr_ty e, int kind);
 
 static size_t bc_emit(BcCtx *c, int op, int a, int b, int cc, int dd, const void *p,
                       int line, int col, int span) {
@@ -151,6 +169,8 @@ static size_t bc_emit(BcCtx *c, int op, int a, int b, int cc, int dd, const void
     p_->code[p_->ncode].line = line;
     p_->code[p_->ncode].col = col;
     p_->code[p_->ncode].span = span;
+    p_->code[p_->ncode].ic_cls = NULL;
+    p_->code[p_->ncode].ic_fn = NULL;
     return p_->ncode++;
 }
 
@@ -287,6 +307,31 @@ static void leave_block(BcCtx *c) {
     c->depth--;
 }
 
+/* 블록 본문이 지역 이름을 만들지 않으면 환경 자체가 필요 없고, 만들어도
+   밖으로 새지 않으면(클로저·주소 없음) 반복마다 같은 환경을 재사용한다.
+   트리 워커의 반복문 블록 처리와 같은 판단이다. */
+enum { BC_ENV_SKIP = 0, BC_ENV_POOL = 1, BC_ENV_NEW = 2 };
+
+static int block_env_mode(asdl_seq *body) {
+    if (!Interp_BodyDeclaresNames(body))
+        return BC_ENV_SKIP;
+    return Interp_BodyEscapesEnv(body) ? BC_ENV_NEW : BC_ENV_POOL;
+}
+
+static void open_block(BcCtx *c, stmt_ty s, int mode) {
+    if (mode == BC_ENV_SKIP)
+        return;
+    enter_block(c);
+    emit_s(c, BC_ENTER_BLOCK, 0, mode == BC_ENV_POOL, 0, 0, NULL, s);
+}
+
+static void close_block(BcCtx *c, stmt_ty s, int mode) {
+    if (mode == BC_ENV_SKIP)
+        return;
+    leave_block(c);
+    emit_s(c, BC_LEAVE_BLOCK, 0, mode == BC_ENV_POOL, 0, 0, NULL, s);
+}
+
 static void patch(BcCtx *c, size_t at, int field, size_t target) {
     BcInsn *ins = &c->p->code[at];
     switch (field) {
@@ -322,6 +367,20 @@ static void compile_call(BcCtx *c, expr_ty e) {
 
     if (has_spread(args)) {
         delegate_expr(c, e);
+        return;
+    }
+    if (!optional && !nkw &&
+        (e->v.Call.func->kind == Attribute_kind ||
+         e->v.Call.func->kind == PtrAttribute_kind)) {
+        /* obj.method(...): 묶인 메서드 값을 만들지 않고 바로 호출한다. */
+        expr_ty fa = e->v.Call.func;
+        int attr = fa->kind == Attribute_kind;
+        bc_expr(c, attr ? fa->v.Attribute.value : fa->v.PtrAttribute.value);
+        for (i = 0; i < nargs; i++)
+            bc_expr(c, asdl_seq_GET(args, i));
+        emit_e(c, BC_CALL_METHOD,
+               bc_name(c, attr ? fa->v.Attribute.attr : fa->v.PtrAttribute.attr),
+               (int)nargs, 0, 0, NULL, e);
         return;
     }
     if (optional) {
@@ -509,6 +568,15 @@ static void bc_expr(BcCtx *c, expr_ty e) {
         emit_e(c, BC_DICT, (int)n, 0, 0, 0, NULL, e);
         return;
     }
+    case ListComp_kind:
+        compile_comprehension(c, e, 0);
+        return;
+    case SetComp_kind:
+        compile_comprehension(c, e, 1);
+        return;
+    case DictComp_kind:
+        compile_comprehension(c, e, 2);
+        return;
     default:
         delegate_expr(c, e);
         return;
@@ -522,6 +590,213 @@ static void bc_block(BcCtx *c, asdl_seq *body) {
             return;
         bc_stmt(c, asdl_seq_GET(body, i));
     }
+}
+
+/* 리터럴/이름/와일드카드 패턴만 있으면 패턴 매처를 거치지 않고 비교와
+   바인딩 명령으로 펼친다. 구조 분해 패턴(PVariant/PList/PDict)은 트리
+   워커에 그대로 넘긴다. */
+static int switch_case_simple(match_case_ty mc) {
+    return mc->pattern->kind == PLiteral_kind || mc->pattern->kind == PBind_kind;
+}
+
+static void compile_switch(BcCtx *c, stmt_ty s) {
+    asdl_seq *cases = s->v.Switch.cases;
+    size_t n = asdl_seq_LEN(cases), i;
+    size_t *test_at, *next_jump, *end_jump;
+    size_t no_match, end;
+
+    for (i = 0; i < n; i++) {
+        if (!switch_case_simple(asdl_seq_GET(cases, i))) {
+            emit_s(c, BC_DELEGATE_STMT, 0, 0, 0, 0, s, s);
+            return;
+        }
+    }
+    test_at = n ? Arena_Alloc(c->p->arena, n * sizeof *test_at) : NULL;
+    next_jump = n ? Arena_Alloc(c->p->arena, n * sizeof *next_jump) : NULL;
+    end_jump = n ? Arena_Alloc(c->p->arena, n * sizeof *end_jump) : NULL;
+
+    /* subject는 스택에 한 번만 두고 각 case가 복제해서 검사한다. 맞으면
+       본문 전에 꺼내므로 문장 경계의 스택은 항상 비어 있다. */
+    bc_expr(c, s->v.Switch.subject);
+    for (i = 0; i < n; i++) {
+        match_case_ty mc = asdl_seq_GET(cases, i);
+        size_t jf = 0, jg = 0;
+        int has_guard = mc->guard != NULL;
+        int binds = mc->pattern->kind == PBind_kind &&
+                    strcmp(mc->pattern->v.PBind.name, "_") != 0;
+        int mode;
+
+        /* 바인딩이 없으면 본문이 이름을 만들 때만 환경이 필요하고, 바인딩이
+           있으면 항상 필요하다. 밖으로 새지 않으면 반복 사이에 재사용한다. */
+        if (binds)
+            mode = (has_guard || Interp_BodyEscapesEnv(mc->body)) ? BC_ENV_NEW
+                                                                  : BC_ENV_POOL;
+        else
+            mode = block_env_mode(mc->body);
+
+        test_at[i] = c->p->ncode;
+        if (mc->pattern->kind == PLiteral_kind) {
+            emit_s(c, BC_DUP, 0, 0, 0, 0, NULL, s);
+            bc_expr(c, mc->pattern->v.PLiteral.value);
+            emit_s(c, BC_COMPARE, (int)Eq, 0, 0, 0, NULL, s);
+            jf = emit_s(c, BC_JUMP_IF_FALSE, 0, 0, 0, 0, NULL, s);
+        }
+        open_block(c, s, mode);
+        if (binds) {
+            int name = bc_name(c, mc->pattern->v.PBind.name);
+            emit_s(c, BC_DUP, 0, 0, 0, 0, NULL, s);
+            emit_s(c, BC_BIND, name, 0, 0, 0, NULL, s);
+        }
+        if (has_guard) {
+            bc_expr(c, mc->guard);
+            jg = emit_s(c, BC_JUMP_IF_FALSE, 0, 0, 0, 0, NULL, s);
+        }
+        emit_s(c, BC_POP, 0, 0, 0, 0, NULL, s);
+        bc_block(c, mc->body);
+        close_block(c, s, mode);
+        end_jump[i] = emit_s(c, BC_JUMP, 0, 0, 0, 0, NULL, s);
+        if (has_guard) {
+            /* 패턴은 맞았지만 guard가 거짓이면 case 환경만 닫고 다음 case로.
+               환경 하나를 두 경로에서 닫지만 동시에 열려 있는 깊이는 그대로다. */
+            patch(c, jg, 0, c->p->ncode);
+            if (mode != BC_ENV_SKIP)
+                emit_s(c, BC_LEAVE_BLOCK, 0, mode == BC_ENV_POOL, 0, 0, NULL, s);
+            next_jump[i] = emit_s(c, BC_JUMP, 0, 0, 0, 0, NULL, s);
+        }
+        else {
+            next_jump[i] = (size_t)-1;
+        }
+        if (jf)
+            patch(c, jf, 0, c->p->ncode);
+    }
+    no_match = c->p->ncode;
+    emit_s(c, BC_POP, 0, 0, 0, 0, NULL, s);
+    end = c->p->ncode;
+    for (i = 0; i < n; i++) {
+        patch(c, end_jump[i], 0, end);
+        if (next_jump[i] != (size_t)-1)
+            patch(c, next_jump[i], 0, i + 1 < n ? test_at[i + 1] : no_match);
+    }
+}
+
+/* try { ... } catch (T e) { ... } 를 처리기 기록으로 펼친다. finally가
+   있거나 처리기가 없으면 지금처럼 트리 워커에 넘긴다. */
+static void compile_try(BcCtx *c, stmt_ty s) {
+    asdl_seq *handlers = s->v.Try.handlers;
+    size_t n = asdl_seq_LEN(handlers), i;
+    size_t *end_jump;
+    size_t push, end;
+    int mode;
+
+    if (n == 0 || asdl_seq_LEN(s->v.Try.finalbody) > 0 || c->try_depth >= BC_MAX_TRY) {
+        emit_s(c, BC_DELEGATE_STMT, 0, 0, 0, 0, s, s);
+        return;
+    }
+    end_jump = Arena_Alloc(c->p->arena, (n + 1) * sizeof *end_jump);
+    c->try_depth++;
+    if (c->try_depth > c->max_try_depth)
+        c->max_try_depth = c->try_depth;
+
+    /* 본문은 try 문 전용 환경에서 실행한다 (이름을 만들 때만). */
+    mode = Interp_BodyDeclaresNames(s->v.Try.body) ? BC_ENV_NEW : BC_ENV_SKIP;
+    push = emit_s(c, BC_TRY_PUSH, 0, 0, 0, 0, NULL, s);
+    open_block(c, s, mode);
+    bc_block(c, s->v.Try.body);
+    close_block(c, s, mode);
+    emit_s(c, BC_TRY_POP, 0, 0, 0, 0, NULL, s);
+    end_jump[0] = emit_s(c, BC_JUMP, 0, 0, 0, 0, NULL, s);
+
+    /* 예외로 들어오는 지점: 여기서부터 처리기를 차례로 검사한다. */
+    patch(c, push, 0, c->p->ncode);
+    for (i = 0; i < n; i++) {
+        handler_ty h = asdl_seq_GET(handlers, i);
+        size_t skip = emit_s(c, BC_EXC_MATCH, 0, 0, 0, 0, h->ty, s);
+        /* 처리기 몸통도 트리 워커처럼 새 환경에서 돈다. */
+        enter_block(c);
+        emit_s(c, BC_ENTER_BLOCK, 0, 0, 0, 0, NULL, s);
+        emit_s(c, BC_EXC_BIND, bc_name(c, h->name), 0, 0, 0, NULL, s);
+        bc_block(c, h->body);
+        leave_block(c);
+        emit_s(c, BC_LEAVE_BLOCK, 0, 0, 0, 0, NULL, s);
+        end_jump[i + 1] = emit_s(c, BC_JUMP, 0, 0, 0, 0, NULL, s);
+        patch(c, skip, 0, c->p->ncode);
+    }
+    /* 어떤 처리기도 맞지 않으면 그대로 다시 던진다. */
+    emit_s(c, BC_RETHROW, 0, 0, 0, 0, NULL, s);
+    end = c->p->ncode;
+    for (i = 0; i <= n; i++)
+        patch(c, end_jump[i], 0, end);
+    c->try_depth--;
+}
+
+/* [elt for name in iter if cond] 형태를 for-in 루프 명령으로 펼친다.
+   누적 컬렉션은 스택에 두고, 루프 변수 환경은 for-in 문과 같이 다룬다. */
+static void compile_comprehension(BcCtx *c, expr_ty e, int kind) {
+    expr_ty elt = NULL, key = NULL, value = NULL, iter, cond;
+    identifier name;
+    BcLoopCtx loop;
+    size_t beg, cont, next_pc, end;
+
+    if (kind == 2) {
+        key = e->v.DictComp.key;
+        value = e->v.DictComp.value;
+        name = e->v.DictComp.name;
+        iter = e->v.DictComp.iter;
+        cond = e->v.DictComp.cond;
+    }
+    else if (kind == 1) {
+        elt = e->v.SetComp.elt;
+        name = e->v.SetComp.name;
+        iter = e->v.SetComp.iter;
+        cond = e->v.SetComp.cond;
+    }
+    else {
+        elt = e->v.ListComp.elt;
+        name = e->v.ListComp.name;
+        iter = e->v.ListComp.iter;
+        cond = e->v.ListComp.cond;
+    }
+    if (c->loop_depth >= BC_MAX_LOOPS) {
+        c->failed = 1;
+        return;
+    }
+    /* 누적 컬렉션을 먼저 스택에 두고 그 위에 이터러블을 올린다.
+       FORIN_BEGIN이 위쪽 값을 꺼내므로 컬렉션이 남는다. */
+    emit_e(c, kind == 2 ? BC_DICT : kind == 1 ? BC_SET : BC_LIST, 0, 0, 0, 0, NULL, e);
+    bc_expr(c, iter);
+    enter_block(c);
+    beg = emit_e(c, BC_FORIN_BEGIN, bc_name(c, name), 0, 0, 0, NULL, e);
+    loop.prev = c->loop;
+    loop.push_pc = beg;
+    c->loop = &loop;
+    c->loop_depth++;
+    if (c->loop_depth > c->max_loop_depth)
+        c->max_loop_depth = c->loop_depth;
+    cont = c->p->ncode;
+    next_pc = emit_e(c, BC_FORIN_NEXT, 0, 0, 0, 0, NULL, e);
+    if (cond) {
+        bc_expr(c, cond);
+        emit_e(c, BC_JUMP_IF_FALSE, (int)cont, 0, 0, 0, NULL, e);
+    }
+    if (kind == 2) {
+        bc_expr(c, key);
+        bc_expr(c, value);
+        emit_e(c, BC_DICT_SET, 0, 0, 0, 0, NULL, e);
+    }
+    else {
+        bc_expr(c, elt);
+        emit_e(c, kind == 1 ? BC_SET_ADD : BC_LIST_APPEND, 0, 0, 0, 0, NULL, e);
+    }
+    emit_e(c, BC_JUMP, (int)cont, 0, 0, 0, NULL, e);
+    end = c->p->ncode;
+    patch(c, next_pc, 0, end);
+    leave_block(c);
+    emit_e(c, BC_LEAVE_BLOCK, 0, 0, 0, 0, NULL, e);
+    emit_e(c, BC_LOOP_POP, 0, 0, 0, 0, NULL, e);
+    patch(c, beg, 2, cont);
+    patch(c, beg, 3, end);
+    c->loop = loop.prev;
+    c->loop_depth--;
 }
 
 static void bc_stmt(BcCtx *c, stmt_ty s) {
@@ -552,26 +827,26 @@ static void bc_stmt(BcCtx *c, stmt_ty s) {
         return;
     case If_kind: {
         size_t jf, jend;
+        int mode = block_env_mode(s->v.If.body);
+        int emode = block_env_mode(s->v.If.orelse);
+
         bc_expr(c, s->v.If.test);
         jf = emit_s(c, BC_JUMP_IF_FALSE, 0, 0, 0, 0, NULL, s);
-        enter_block(c);
-        emit_s(c, BC_ENTER_BLOCK, 0, 0, 0, 0, NULL, s);
+        open_block(c, s, mode);
         bc_block(c, s->v.If.body);
-        leave_block(c);
-        emit_s(c, BC_LEAVE_BLOCK, 0, 0, 0, 0, NULL, s);
+        close_block(c, s, mode);
         jend = emit_s(c, BC_JUMP, 0, 0, 0, 0, NULL, s);
         patch(c, jf, 0, c->p->ncode);
-        enter_block(c);
-        emit_s(c, BC_ENTER_BLOCK, 0, 0, 0, 0, NULL, s);
+        open_block(c, s, emode);
         bc_block(c, s->v.If.orelse);
-        leave_block(c);
-        emit_s(c, BC_LEAVE_BLOCK, 0, 0, 0, 0, NULL, s);
+        close_block(c, s, emode);
         patch(c, jend, 0, c->p->ncode);
         return;
     }
     case While_kind: {
         BcLoopCtx loop;
         size_t push_pc, cont, test_jf, end;
+        int mode = block_env_mode(s->v.While.body);
 
         if (c->loop_depth >= BC_MAX_LOOPS) {
             c->failed = 1;
@@ -587,11 +862,9 @@ static void bc_stmt(BcCtx *c, stmt_ty s) {
         cont = c->p->ncode;
         bc_expr(c, s->v.While.test);
         test_jf = emit_s(c, BC_JUMP_IF_FALSE, 0, 0, 0, 0, NULL, s);
-        enter_block(c);
-        emit_s(c, BC_ENTER_BLOCK, 0, 0, 0, 0, NULL, s);
+        open_block(c, s, mode);
         bc_block(c, s->v.While.body);
-        leave_block(c);
-        emit_s(c, BC_LEAVE_BLOCK, 0, 0, 0, 0, NULL, s);
+        close_block(c, s, mode);
         emit_s(c, BC_JUMP, (int)cont, 0, 0, 0, NULL, s);
         end = c->p->ncode;
         patch(c, test_jf, 0, end);
@@ -606,6 +879,7 @@ static void bc_stmt(BcCtx *c, stmt_ty s) {
         BcLoopCtx loop;
         size_t push_pc, cont, test_pc, end;
         int has_step = s->v.ForRange.iter->step != NULL;
+        int mode = block_env_mode(s->v.ForRange.body);
 
         if (c->loop_depth >= BC_MAX_LOOPS) {
             c->failed = 1;
@@ -626,11 +900,9 @@ static void bc_stmt(BcCtx *c, stmt_ty s) {
             c->max_loop_depth = c->loop_depth;
         cont = c->p->ncode;
         test_pc = emit_s(c, BC_RANGE_TEST, 0, 0, 0, 0, NULL, s);
-        enter_block(c);
-        emit_s(c, BC_ENTER_BLOCK, 0, 0, 0, 0, NULL, s);
+        open_block(c, s, mode);
         bc_block(c, s->v.ForRange.body);
-        leave_block(c);
-        emit_s(c, BC_LEAVE_BLOCK, 0, 0, 0, 0, NULL, s);
+        close_block(c, s, mode);
         emit_s(c, BC_RANGE_STEP, 0, 0, 0, 0, NULL, s);
         emit_s(c, BC_JUMP, (int)cont, 0, 0, 0, NULL, s);
         end = c->p->ncode;
@@ -647,6 +919,7 @@ static void bc_stmt(BcCtx *c, stmt_ty s) {
     case ForIn_kind: {
         BcLoopCtx loop;
         size_t push_pc, cont, next_pc, end;
+        int mode = block_env_mode(s->v.ForIn.body);
 
         if (c->loop_depth >= BC_MAX_LOOPS) {
             c->failed = 1;
@@ -664,11 +937,9 @@ static void bc_stmt(BcCtx *c, stmt_ty s) {
             c->max_loop_depth = c->loop_depth;
         cont = c->p->ncode;
         next_pc = emit_s(c, BC_FORIN_NEXT, 0, 0, 0, 0, s->v.ForIn.ty, s);
-        enter_block(c);
-        emit_s(c, BC_ENTER_BLOCK, 0, 0, 0, 0, NULL, s);
+        open_block(c, s, mode);
         bc_block(c, s->v.ForIn.body);
-        leave_block(c);
-        emit_s(c, BC_LEAVE_BLOCK, 0, 0, 0, 0, NULL, s);
+        close_block(c, s, mode);
         emit_s(c, BC_JUMP, (int)cont, 0, 0, 0, NULL, s);
         end = c->p->ncode;
         patch(c, next_pc, 0, end);
@@ -684,6 +955,7 @@ static void bc_stmt(BcCtx *c, stmt_ty s) {
     case For_kind: {
         BcLoopCtx loop;
         size_t push_pc, test_pc, test_jf, step_pc, end;
+        int mode = block_env_mode(s->v.For.body);
 
         if (c->loop_depth >= BC_MAX_LOOPS) {
             c->failed = 1;
@@ -702,11 +974,9 @@ static void bc_stmt(BcCtx *c, stmt_ty s) {
         test_pc = c->p->ncode;
         bc_expr(c, s->v.For.test);
         test_jf = emit_s(c, BC_JUMP_IF_FALSE, 0, 0, 0, 0, NULL, s);
-        enter_block(c);
-        emit_s(c, BC_ENTER_BLOCK, 0, 0, 0, 0, NULL, s);
+        open_block(c, s, mode);
         bc_block(c, s->v.For.body);
-        leave_block(c);
-        emit_s(c, BC_LEAVE_BLOCK, 0, 0, 0, 0, NULL, s);
+        close_block(c, s, mode);
         step_pc = c->p->ncode;
         bc_stmt(c, s->v.For.step);
         emit_s(c, BC_JUMP, (int)test_pc, 0, 0, 0, NULL, s);
@@ -721,6 +991,9 @@ static void bc_stmt(BcCtx *c, stmt_ty s) {
         c->loop_depth--;
         return;
     }
+    case Switch_kind:
+        compile_switch(c, s);
+        return;
     case Return_kind:
         if (s->v.Return.value) {
             bc_expr(c, s->v.Return.value);
@@ -743,6 +1016,9 @@ static void bc_stmt(BcCtx *c, stmt_ty s) {
             return;
         }
         emit_s(c, BC_CONTINUE, 0, 0, 0, 0, NULL, s);
+        return;
+    case Try_kind:
+        compile_try(c, s);
         return;
     default:
         emit_s(c, BC_DELEGATE_STMT, 0, 0, 0, 0, s, s);
@@ -769,6 +1045,7 @@ BcProto *VM_CompileBody(Interp *in, asdl_seq *body) {
         return NULL;
     p->max_blocks = c.max_depth;
     p->max_loops = c.max_loop_depth;
+    p->max_try = c.max_try_depth;
     return p;
 }
 
@@ -785,6 +1062,7 @@ BcProto *VM_CompileExpr(Interp *in, expr_ty expr) {
         return NULL;
     p->max_blocks = c.max_depth;
     p->max_loops = c.max_loop_depth;
+    p->max_try = c.max_try_depth;
     return p;
 }
 
@@ -805,20 +1083,32 @@ typedef struct {
 } VmLoop;
 
 typedef struct {
+    size_t catch_pc;
+    size_t sp;          /* try 진입 시의 스택 깊이 */
+    int scope_base;     /* try 진입 시의 블록 깊이 */
+    int nloops;         /* try 진입 시의 루프 깊이 (break에서 함께 버린다) */
+    size_t saved_frames;
+} VmHandler;
+
+typedef struct {
     Interp *in;
     BcProto *proto;
     RValue **stack;
     size_t sp, cap;
     Env *env;
     Env **blocks;
+    unsigned char *pooled;  /* blocks[i]가 풀에서 빌린 환경인지 */
     int nblocks;
     VmLoop *loops;
     int nloops;
+    VmHandler *handlers;
+    int nhandlers;
+    size_t catch_frames;  /* 방금 잡은 try의 진입 시 프레임 수 (BIND에서 절단) */
 } VmState;
 
 static void vm_push(VmState *st, RValue *v) {
     if (st->sp == st->cap) {
-        size_t ncap = st->cap ? st->cap * 2 : 64;
+        size_t ncap = st->cap ? st->cap * 2 : 8;
         st->stack = Aster_GC_Grow(st->stack, st->cap * sizeof(RValue *),
                                   ncap * sizeof(RValue *), GK_PTR_ARRAY);
         st->cap = ncap;
@@ -826,9 +1116,34 @@ static void vm_push(VmState *st, RValue *v) {
     st->stack[st->sp++] = v;
 }
 
+static void vm_enter(VmState *st, int pooled) {
+    st->blocks[st->nblocks] = st->env;
+    st->pooled[st->nblocks] = (unsigned char)pooled;
+    st->nblocks++;
+    st->env = pooled ? Env_AcquireBlock(st->in, st->env)
+                     : Env_New(st->in, st->env);
+}
+
+static void vm_leave(VmState *st) {
+    Env *e = st->env;
+    int pooled;
+
+    if (st->nblocks == 0)
+        return;
+    pooled = st->pooled[--st->nblocks];
+    st->env = st->blocks[st->nblocks];
+    if (pooled)
+        Env_ReleaseBlock(st->in, e);
+}
+
 static void vm_unwind(VmState *st, int scope_base) {
-    while (st->nblocks > scope_base)
-        st->env = st->blocks[--st->nblocks];
+    while (st->nblocks > scope_base) {
+        Env *e = st->env;
+        int pooled = st->pooled[--st->nblocks];
+        st->env = st->blocks[st->nblocks];
+        if (pooled)
+            Env_ReleaseBlock(st->in, e);
+    }
 }
 
 /* 트리 워커는 식을 평가할 때마다 위치를 갱신하므로, 마지막으로 평가한
@@ -857,13 +1172,18 @@ static Signal vm_exec(Interp *in, BcProto *proto, Env *env, int expr_mode,
     st.in = in;
     st.proto = proto;
     st.env = env;
-    if (proto->max_blocks > 0)
+    if (proto->max_blocks > 0) {
         st.blocks = Aster_GC_Alloc((size_t)proto->max_blocks * sizeof(Env *),
                                    GK_PTR_ARRAY);
+        st.pooled = Aster_GC_Alloc((size_t)proto->max_blocks, GK_RAW_ARRAY);
+    }
     if (proto->max_loops > 0)
         st.loops = Aster_GC_Alloc((size_t)proto->max_loops * sizeof(VmLoop),
                                   GK_PTR_ARRAY);
-
+    if (proto->max_try > 0)
+        st.handlers = Aster_GC_Alloc((size_t)proto->max_try * sizeof(VmHandler),
+                                     GK_RAW_ARRAY);
+run_loop:
     while (pc < proto->ncode) {
         BcInsn *ins = &proto->code[pc++];
 
@@ -930,6 +1250,41 @@ static Signal vm_exec(Interp *in, BcProto *proto, Env *env, int expr_mode,
             }
             break;
         }
+        case BC_DUP:
+            vm_push(&st, st.stack[st.sp - 1]);
+            break;
+        case BC_BIND: {
+            RValue *v = st.stack[--st.sp];
+            Env_Define(in, st.env, proto->names[ins->a], RValue_Copy(in, v));
+            break;
+        }
+        case BC_LIST_APPEND: {
+            RValue *v = st.stack[--st.sp];
+            RValue *acc = st.stack[st.sp - 1];
+            List_Append(in, acc->u.list, RValue_Copy(in, v));
+            break;
+        }
+        case BC_SET_ADD: {
+            RValue *v = st.stack[--st.sp];
+            RValue *acc = st.stack[st.sp - 1];
+            int ok = 1;
+            if (!Set_Add(in, acc->u.set, RValue_Copy(in, v), &ok)) {
+                sig = in->sig != SIG_OK ? in->sig : SIG_THROW;
+                goto done;
+            }
+            break;
+        }
+        case BC_DICT_SET: {
+            RValue *v = st.stack[--st.sp];
+            RValue *k = st.stack[--st.sp];
+            RValue *acc = st.stack[st.sp - 1];
+            int ok = 1;
+            if (!Dict_Set(in, acc->u.dict, k, RValue_Copy(in, v), &ok)) {
+                sig = in->sig != SIG_OK ? in->sig : SIG_THROW;
+                goto done;
+            }
+            break;
+        }
         case BC_LIST:
         case BC_TUPLE:
         case BC_SET: {
@@ -991,12 +1346,10 @@ static Signal vm_exec(Interp *in, BcProto *proto, Env *env, int expr_mode,
             break;
         }
         case BC_ENTER_BLOCK:
-            st.blocks[st.nblocks++] = st.env;
-            st.env = Env_New(in, st.env);
+            vm_enter(&st, ins->b);
             break;
         case BC_LEAVE_BLOCK:
-            if (st.nblocks > 0)
-                st.env = st.blocks[--st.nblocks];
+            vm_leave(&st);
             break;
         case BC_UNARY: {
             RValue *v = st.stack[--st.sp];
@@ -1159,6 +1512,44 @@ static Signal vm_exec(Interp *in, BcProto *proto, Env *env, int expr_mode,
                 goto done;
             }
             st.sp = base - 1;
+            vm_push(&st, v);
+            break;
+        }
+        case BC_CALL_METHOD: {
+            int nargs = ins->b;
+            size_t base = st.sp - (size_t)nargs - 1;
+            RValue *recv = st.stack[base];
+            RValue *self = recv;
+            RValue *v;
+
+            if (self && self->kind == RV_PTR)
+                self = self->u.ptr.slot ? *self->u.ptr.slot : NULL;
+            if (self && self->kind == RV_OBJECT) {
+                /* 같은 클래스의 인스턴스가 반복되면 해석을 한 번만 한다. */
+                AstClass *cls = self->u.obj->cls;
+                if (ins->ic_cls != cls) {
+                    AstFn *fn = NULL;
+                    ins->ic_cls = cls;
+                    ins->ic_fn = Interp_ResolveMethod(cls, proto->names[ins->a], &fn)
+                                     ? fn
+                                     : NULL;
+                }
+                if (ins->ic_fn)
+                    v = Interp_CallMethodFast(in, ins->ic_fn, self,
+                                              &st.stack[base + 1], (size_t)nargs);
+                else
+                    v = Interp_CallAttr(in, recv, proto->names[ins->a],
+                                        &st.stack[base + 1], (size_t)nargs);
+            }
+            else {
+                v = Interp_CallAttr(in, recv, proto->names[ins->a],
+                                    &st.stack[base + 1], (size_t)nargs);
+            }
+            if (in->sig != SIG_OK) {
+                sig = in->sig;
+                goto done;
+            }
+            st.sp = base;
             vm_push(&st, v);
             break;
         }
@@ -1361,11 +1752,49 @@ static Signal vm_exec(Interp *in, BcProto *proto, Env *env, int expr_mode,
                 sig = SIG_THROW;
                 goto done;
             }
+            /* 이 루프 안에서 쌓인 처리기는 함께 버린다. */
+            while (st.nhandlers > 0 && st.handlers[st.nhandlers - 1].nloops >= st.nloops)
+                st.nhandlers--;
             vm_unwind(&st, l->scope_base);
             pc = ins->op == BC_BREAK ? l->end_pc : l->cont_pc;
             in->sig = SIG_OK;
             break;
         }
+        case BC_TRY_PUSH: {
+            VmHandler *h;
+            if (st.nhandlers >= proto->max_try) {
+                RT_Throw(in, "RuntimeError", "too many nested try blocks");
+                sig = SIG_THROW;
+                goto done;
+            }
+            h = &st.handlers[st.nhandlers++];
+            h->catch_pc = (size_t)ins->a;
+            h->sp = st.sp;
+            h->scope_base = st.nblocks;
+            h->nloops = st.nloops;
+            h->saved_frames = in->nframes;
+            break;
+        }
+        case BC_TRY_POP:
+            if (st.nhandlers > 0)
+                st.nhandlers--;
+            break;
+        case BC_EXC_MATCH:
+            if (!Interp_ExceptionMatches(in, (typeref_ty)ins->p))
+                pc = (size_t)ins->a;
+            break;
+        case BC_EXC_BIND: {
+            RValue *exc = in->exc;
+            in->exc = NULL;
+            /* 여기서 잡았으므로 트리 워커처럼 그 사이 프레임만 지운다. */
+            Interp_FrameTruncate(in, st.catch_frames);
+            Env_Define(in, st.env, proto->names[ins->a], exc);
+            break;
+        }
+        case BC_RETHROW:
+            in->sig = SIG_THROW;
+            sig = SIG_THROW;
+            goto done;
         case BC_END:
             goto done;
         default:
@@ -1376,6 +1805,18 @@ static Signal vm_exec(Interp *in, BcProto *proto, Env *env, int expr_mode,
     }
 
 done:
+    /* 이 프레임에서 잡을 수 있는 try가 있으면 그 catch로 이어서 실행한다. */
+    if (sig == SIG_THROW && st.nhandlers > 0) {
+        VmHandler *h = &st.handlers[--st.nhandlers];
+        vm_unwind(&st, h->scope_base);
+        st.sp = h->sp;
+        st.nloops = h->nloops;  /* try 안에서 열린 루프 기록도 버린다 */
+        st.catch_frames = h->saved_frames;
+        in->sig = SIG_OK;
+        sig = SIG_OK;
+        pc = h->catch_pc;
+        goto run_loop;
+    }
     if (sig == SIG_OK) {
         if (expr_mode) {
             *result = st.sp ? st.stack[st.sp - 1] : NULL;

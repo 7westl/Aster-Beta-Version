@@ -46,6 +46,55 @@ static int g_enabled = 1;
 static int g_debug;
 static int g_trace;
 
+/*
+ * 크기 클래스 할당기.
+ *
+ * 인터프리터는 반복문 한 번에 작은 블록(환경, RValue, 바인딩)을 여러 개
+ * 만든다. 블록마다 malloc/free를 부르면 그 비용이 인터프리터 실행 비용보다
+ * 커지므로, 작은 블록은 슬랩에서 잘라 쓰고 수거된 블록은 크기 클래스별
+ * 자유 목록에 되돌린다. 큰 블록만 시스템 할당자를 그대로 쓴다.
+ */
+#define GC_ALIGN 16
+#define GC_SMALL_MAX 2048 /* 블록 전체 크기(머리말 포함) 상한 */
+#define GC_NCLASSES (GC_SMALL_MAX / GC_ALIGN)
+#define GC_SLAB_SIZE ((size_t)256 * 1024)
+
+typedef struct GCSlab {
+    struct GCSlab *next;
+    size_t used, cap;
+    char *mem;
+} GCSlab;
+
+static GCBlock *g_freecls[GC_NCLASSES];
+static GCSlab *g_slabs;
+
+static void *xrealloc_checked(void *p, size_t n);
+
+static size_t block_class(size_t payload) {
+    size_t total = sizeof(GCBlock) + (payload ? payload : 1);
+    size_t cls = (total + GC_ALIGN - 1) / GC_ALIGN;
+    return cls <= GC_NCLASSES ? cls : 0;
+}
+
+static void *slab_alloc(size_t bytes) {
+    GCSlab *sl = g_slabs;
+
+    if (!sl || sl->used + bytes > sl->cap) {
+        size_t cap = bytes > GC_SLAB_SIZE ? bytes : GC_SLAB_SIZE;
+        sl = xrealloc_checked(NULL, sizeof *sl);
+        sl->mem = xrealloc_checked(NULL, cap);
+        sl->used = 0;
+        sl->cap = cap;
+        sl->next = g_slabs;
+        g_slabs = sl;
+    }
+    {
+        void *p = sl->mem + sl->used;
+        sl->used += bytes;
+        return p;
+    }
+}
+
 static GCBlock **g_index;
 static size_t g_nindex;
 static size_t g_capindex;
@@ -616,12 +665,19 @@ static void sweep(void) {
             link = &b->next;
         }
         else {
+            size_t cls = block_class(b->size);
             if (g_trace)
                 fprintf(stderr, "[gc] free kind=%u size=%zu at %p\n", b->kind, b->size,
                         (void *)(b + 1));
             *link = b->next;
             g_bytes -= b->size;
-            free(b);
+            if (cls) {
+                b->next = g_freecls[cls - 1];
+                g_freecls[cls - 1] = b;
+            }
+            else {
+                free(b);
+            }
         }
     }
 }
@@ -700,13 +756,24 @@ int Aster_GC_IsInitialized(void) {
 
 void *Aster_GC_Alloc(size_t size, GKind kind) {
     GCBlock *b;
-    char *payload;
+    size_t cls;
 
     if (!g_initialized)
         gc_init_internal(NULL);
     if (!g_collecting && g_enabled && (g_stress || g_bytes > g_threshold))
         Aster_GC_Collect();
-    b = xrealloc_checked(NULL, sizeof *b + (size ? size : 1));
+    cls = block_class(size);
+    if (cls) {
+        size_t total = cls * GC_ALIGN;
+        b = g_freecls[cls - 1];
+        if (b)
+            g_freecls[cls - 1] = b->next;
+        else
+            b = slab_alloc(total);
+    }
+    else {
+        b = xrealloc_checked(NULL, sizeof *b + (size ? size : 1));
+    }
     b->next = g_blocks;
     b->size = size;
     b->kind = (unsigned)kind;
@@ -714,13 +781,12 @@ void *Aster_GC_Alloc(size_t size, GKind kind) {
     b->pinned = (unsigned)g_pinning;
     g_blocks = b;
     g_bytes += size;
-    payload = (char *)(b + 1);
     if (size)
-        memset(payload, 0, size);
+        memset((char *)(b + 1), 0, size);
     if (g_trace)
         fprintf(stderr, "[gc] alloc kind=%u size=%zu at %p (live=%zu) pinned=%d\n",
-                (unsigned)kind, size, (void *)payload, g_bytes, (int)g_pinning);
-    return payload;
+                (unsigned)kind, size, (void *)(b + 1), g_bytes, (int)g_pinning);
+    return b + 1;
 }
 
 void *Aster_GC_Grow(const void *old, size_t old_size, size_t new_size, GKind kind) {
@@ -840,6 +906,8 @@ void Aster_GC_SuspendCurrent(void) {
 
 void Aster_GC_Shutdown(void) {
     GCBlock *b;
+    GCSlab *sl;
+    size_t i;
 
     if (!g_initialized)
         return;
@@ -848,10 +916,21 @@ void Aster_GC_Shutdown(void) {
     b = g_blocks;
     while (b) {
         GCBlock *next = b->next;
-        free(b);
+        if (!block_class(b->size))
+            free(b);
         b = next;
     }
     g_blocks = NULL;
+    sl = g_slabs;
+    while (sl) {
+        GCSlab *next = sl->next;
+        free(sl->mem);
+        free(sl);
+        sl = next;
+    }
+    g_slabs = NULL;
+    for (i = 0; i < GC_NCLASSES; i++)
+        g_freecls[i] = NULL;
     g_bytes = 0;
     g_nindex = 0;
     free(g_index);
