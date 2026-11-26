@@ -6,3 +6,5 @@ __pycache__
 /aster.exe
 codeup
 base64
+.tmp.drivedownload
+.tmp.driveupload

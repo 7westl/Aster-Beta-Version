@@ -1,0 +1,151 @@
+exception AppError extends Exception;
+
+fn inferred(int n) -> int {
+    var x = n;
+    return x;
+}
+
+fn letInferred(int n) -> int {
+    let y = n + 1;
+    return y;
+}
+
+fn anyParam(any x) -> int {
+    return 1;
+}
+
+fn listParam(list<int> xs) -> int {
+    return 1;
+}
+
+fn dictParam(dict<str, int> m) -> int {
+    return 1;
+}
+
+fn generic<T>(T v) -> T {
+    return v;
+}
+
+fn defaulted(int x = 1) -> int {
+    return x;
+}
+
+fn named(int n) -> int {
+    return add(b = n, a = 1);
+}
+
+fn add(int a, int b) -> int {
+    return a + b;
+}
+
+fn lam(int n) -> int {
+    int twice = (int x) => x * 2 -> int;
+    return twice(n);
+}
+
+fn fmt(int n) -> str {
+    return f"{n}";
+}
+
+fn listing(int n) -> int {
+    list<int> xs = [1, 2];
+    return n;
+}
+
+fn indexing(list<int> xs) -> int {
+    return xs[0];
+}
+
+fn switching(int n) -> int {
+    switch (n) {
+        case 1 {
+            return 1;
+        }
+        default {
+            return 0;
+        }
+    }
+}
+
+fn trying(int n) -> int {
+    try {
+        return n;
+    }
+    catch (Exception e) {
+        return 0;
+    }
+}
+
+fn throwing(int n) -> int {
+    if (n < 0) {
+        throw AppError("bad");
+    }
+    return n;
+}
+
+fn nested(int n) -> int {
+    fn inner(int a) -> int {
+        return a;
+    }
+    return inner(n);
+}
+
+fn object(int n) -> Box* {
+    Box* b = new Box(n);
+    return b;
+}
+
+fn typeTest(int n) -> bool {
+    return n is int;
+}
+
+fn membership(int n) -> bool {
+    list<int> xs = [1, 2];
+    return n in xs;
+}
+
+fn nullish() -> str? {
+    return null;
+}
+
+fn coalescing(str? s) -> str {
+    return s ?? "x";
+}
+
+fn looping(int n) -> int {
+    int s = 0;
+    for (int x in [1, 2]) {
+        s += x;
+    }
+    return s;
+}
+
+fn yielding(int n) -> list<int> {
+    yield n;
+}
+
+fn destructuring(int n) -> int {
+    var (a, b) = (n, n);
+    return a;
+}
+
+fn asserting(int n) -> int {
+    assert n > 0;
+    return n;
+}
+
+class Box {
+    int v;
+
+    constructor(int x) {
+        self->v = x;
+    }
+
+    fn get() -> int {
+        return self->v;
+    }
+
+    static fn zero() -> int {
+        return 0;
+    }
+}
