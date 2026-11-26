@@ -40,7 +40,7 @@ statement:
     | simple_stmt
 
 # 블록으로 끝나는 구문: 닫는 '}' 뒤에 ';'를 붙이지 않는다.
-# (struct_def, typedef_struct는 C 문법에 따라 ';'로 끝난다.)
+# struct_def, typedef_struct, typedef_alias는 ';'로 끝난다.
 compound_stmt:
     | export_decl
     | function_def
@@ -49,6 +49,7 @@ compound_stmt:
     | exception_def
     | struct_def
     | typedef_struct
+    | typedef_alias
     | enum_def
     | extern_def
     | if_stmt
@@ -190,7 +191,7 @@ parameters: parameter (',' parameter)*
 parameter: ['vararg' | 'varkwarg'] type NAME ['=' expression]
 
 # export는 선언 앞에 붙인다. 모듈에서 import할 수 있게 된다.
-# (export fn/class/interface/exception/struct/typedef struct/변수)
+# (export fn/class/interface/exception/struct/typedef/변수)
 export_decl: 'export' exported_decl
 exported_decl:
     | extern_def
@@ -200,7 +201,12 @@ exported_decl:
     | exception_def
     | struct_def
     | typedef_struct
+    | typedef_alias
+    | export_type
     | var_decl
+
+# export type NAME;은 앞서 선언한 타입 별칭을 모듈 밖으로 공개한다.
+export_type: 'type' NAME ';'
 
 # 사용자 예외: exception MyError;  /  exception MyError extends ValueError;
 exception_def: 'exception' NAME ['extends' NAME] ';'
@@ -264,6 +270,7 @@ interface_method:
 # var_decl(struct Point p;)로 되돌아간다.
 struct_def: 'struct' NAME struct_body ';'                      # [Q2.1]
 typedef_struct: 'typedef' 'struct' NAME struct_body NAME ';'
+typedef_alias: 'typedef' NAME type ';'
 
 struct_body: '{' struct_member* '}'
 struct_member:

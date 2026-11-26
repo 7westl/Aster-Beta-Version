@@ -100,6 +100,34 @@ stmt_ty _Aster_StructDef(identifier tag, identifier alias, asdl_seq *members, ac
     return p;
 }
 
+stmt_ty _Aster_TypeAlias(identifier name, typeref_ty ty, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
+    stmt_ty p;
+    if (!name) missing("name", "TypeAlias");
+    if (!ty) missing("ty", "TypeAlias");
+    p = Arena_Alloc(arena, sizeof(*p));
+    p->kind = TypeAlias_kind;
+    p->v.TypeAlias.name = name;
+    p->v.TypeAlias.ty = ty;
+    p->lineno = lineno;
+    p->col_offset = col_offset;
+    p->end_lineno = end_lineno;
+    p->end_col_offset = end_col_offset;
+    return p;
+}
+
+stmt_ty _Aster_ExportType(identifier name, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
+    stmt_ty p;
+    if (!name) missing("name", "ExportType");
+    p = Arena_Alloc(arena, sizeof(*p));
+    p->kind = ExportType_kind;
+    p->v.ExportType.name = name;
+    p->lineno = lineno;
+    p->col_offset = col_offset;
+    p->end_lineno = end_lineno;
+    p->end_col_offset = end_col_offset;
+    return p;
+}
+
 stmt_ty _Aster_VarDecl(typeref_ty ty, identifier name, initializer_ty init, int is_const, int is_readonly, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena) {
     stmt_ty p;
     if (!ty) missing("ty", "VarDecl");
@@ -1569,6 +1597,20 @@ static void dump_stmt(FILE *out, stmt_ty n) {
         dump_seq(out, n->v.StructDef.members, dumpv_struct_member);
         fputs(", access=", out);
         dump_access(out, n->v.StructDef.access);
+        fputc(')', out);
+        break;
+    case TypeAlias_kind:
+        fputs("TypeAlias(", out);
+        fputs("name=", out);
+        dump_identifier(out, n->v.TypeAlias.name);
+        fputs(", ty=", out);
+        dump_typeref(out, n->v.TypeAlias.ty);
+        fputc(')', out);
+        break;
+    case ExportType_kind:
+        fputs("ExportType(", out);
+        fputs("name=", out);
+        dump_identifier(out, n->v.ExportType.name);
         fputc(')', out);
         break;
     case VarDecl_kind:

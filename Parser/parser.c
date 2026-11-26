@@ -324,6 +324,10 @@ static void prescan(Parser *p) {
                 }
             }
         }
+        else if (tok_eq(t, "typedef") && nxt && nxt->type == TOK_NAME &&
+                 !tok_eq(nxt, "struct")) {
+            ns_add(&p->type_names, intern_token(p, nxt));
+        }
         else if (tok_eq(t, "import")) {
             size_t j = i + 1;
             while (j < p->n && !tok_eq(tok_at(p, j), ";") &&
@@ -500,6 +504,20 @@ static typeref_ty p_type_base(Parser *p) {
         asdl_seq *args;
         if (!name)
             return NULL;
+        while (accept(p, ".")) {
+            identifier part = p_name(p);
+            size_t left, right;
+            char *qualified;
+            if (!part)
+                return NULL;
+            left = strlen(name);
+            right = strlen(part);
+            qualified = Arena_Alloc(p->arena, left + right + 2);
+            memcpy(qualified, name, left);
+            qualified[left] = '.';
+            memcpy(qualified + left + 1, part, right + 1);
+            name = qualified;
+        }
         args = p_type_args(p);
         return _Aster_Named(name, args ? args : empty_seq(p), p->arena);
     }
@@ -3447,6 +3465,28 @@ static stmt_ty p_typedef_struct(Parser *p) {
                             ATTRS(p, start), p->arena);
 }
 
+static stmt_ty p_typedef_alias(Parser *p) {
+    size_t start = p->pos;
+    identifier name;
+    typeref_ty ty;
+
+    if (!accept(p, "typedef")) {
+        p->pos = start;
+        return NULL;
+    }
+    name = p_name(p);
+    if (!name) {
+        p->pos = start;
+        return NULL;
+    }
+    ty = p_type(p);
+    if (!ty || !accept(p, ";")) {
+        p->pos = start;
+        return NULL;
+    }
+    return _Aster_TypeAlias(name, ty, ATTRS(p, start), p->arena);
+}
+
 /* --------------------------------------------------------------- 제어문 */
 
 static stmt_ty p_if_stmt(Parser *p);
@@ -4083,6 +4123,8 @@ static stmt_ty p_decl_with_mods(Parser *p, access_ty access, int is_static) {
     if (!s && !is_static)
         s = p_typedef_struct(p);
     if (!s && !is_static)
+        s = p_typedef_alias(p);
+    if (!s && !is_static)
         s = p_enum_def(p);
     if (!s && !is_static)
         s = p_var_decl(p);
@@ -4101,6 +4143,14 @@ static stmt_ty p_export_decl(Parser *p) {
     if (!accept(p, "export")) {
         p->pos = start;
         return NULL;
+    }
+    if (accept(p, "type")) {
+        identifier name = p_name(p);
+        if (!name || !accept(p, ";")) {
+            p->pos = start;
+            return NULL;
+        }
+        return _Aster_ExportType(name, ATTRS(p, start), p->arena);
     }
     access = p_access_modifier(p);
     is_static = accept(p, "static");
@@ -4149,6 +4199,9 @@ static stmt_ty p_compound_stmt(Parser *p) {
     if (s)
         return s;
     s = p_typedef_struct(p);
+    if (s)
+        return s;
+    s = p_typedef_alias(p);
     if (s)
         return s;
     s = p_if_stmt(p);

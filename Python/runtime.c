@@ -136,6 +136,7 @@ RValue *RValue_New(Interp *in, RKind kind) {
     RValue *v = Aster_GC_Alloc(sizeof(RValue), GK_RVALUE);
     (void)in;
     v->kind = kind;
+    v->type_name_override = NULL;
     return v;
 }
 
@@ -828,6 +829,8 @@ uint64_t RValue_Hash(const RValue *v) {
 const char *RValue_TypeName(const RValue *v) {
     if (!v)
         return "null";
+    if (v->type_name_override)
+        return v->type_name_override;
     switch (v->kind) {
     case RV_NULL:
         return "null";
@@ -1104,7 +1107,24 @@ RValue *RValue_Copy(Interp *in, RValue *v) {
     copy = StructValue_New(in, v->u.stv->type);
     for (i = 0; i < v->u.stv->type->nfields; i++)
         copy->cells[i] = RValue_Copy(in, v->u.stv->cells[i]);
-    return RValue_Struct(in, copy);
+    {
+        RValue *result = RValue_Struct(in, copy);
+        result->type_name_override = v->type_name_override;
+        return result;
+    }
+}
+
+RValue *RValue_CopyWithTypeName(Interp *in, RValue *value, const char *name) {
+    RValue *copy;
+    if (!value)
+        return value;
+    copy = RValue_Copy(in, value);
+    if (copy == value) {
+        copy = RValue_New(in, value->kind);
+        *copy = *value;
+    }
+    copy->type_name_override = name;
+    return copy;
 }
 
 /* ---- 환경 ---- */
@@ -1603,8 +1623,19 @@ static RValue *default_for_type_depth(Interp *in, Env *env, typeref_ty ty, int d
         if (!strcmp(name, "var") || !strcmp(name, "any"))
             return RValue_Null(in);
         cell = Env_LookupCell(env, name);
+        if (cell && *cell && (*cell)->kind == RV_STRUCTTYPE &&
+            (*cell)->u.stype->is_type_alias)
+            return default_for_type_depth(in, env,
+                                          (*cell)->u.stype->type_alias_target,
+                                          depth + 1);
         if (cell && *cell && (*cell)->kind == RV_STRUCTTYPE)
             return struct_default(in, env, (*cell)->u.stype, depth + 1);
+        {
+            AstStructType *alias = TypeAlias_Find(in, env, name);
+            if (alias)
+                return default_for_type_depth(in, env, alias->type_alias_target,
+                                              depth + 1);
+        }
         return RValue_Null(in);
     }
     }
@@ -5950,6 +5981,33 @@ RValue *Module_GetExported(Interp *in, AstModule *module, const char *name) {
         return NULL;
     }
     return public_name && !module_name_hidden(module, name) ? *cell : NULL;
+}
+
+AstStructType *TypeAlias_Find(Interp *in, Env *env, const char *name) {
+    RValue **cell = Env_LookupCell(env, name);
+    const char *dot;
+    if (cell && *cell && (*cell)->kind == RV_STRUCTTYPE &&
+        (*cell)->u.stype->is_type_alias)
+        return (*cell)->u.stype;
+    dot = strrchr(name, '.');
+    if (dot && dot != name && dot[1]) {
+        char module_name[1024];
+        size_t length = (size_t)(dot - name);
+        RValue **module_cell;
+        RValue *exported;
+        if (length >= sizeof module_name)
+            return NULL;
+        memcpy(module_name, name, length);
+        module_name[length] = 0;
+        module_cell = Env_LookupCell(env, module_name);
+        if (module_cell && *module_cell && (*module_cell)->kind == RV_MODULE) {
+            exported = Module_GetExported(in, (*module_cell)->u.module, dot + 1);
+            if (exported && exported->kind == RV_STRUCTTYPE &&
+                exported->u.stype->is_type_alias)
+                return exported->u.stype;
+        }
+    }
+    return NULL;
 }
 
 void Interp_AddModuleDir(Interp *in, const char *dir) {

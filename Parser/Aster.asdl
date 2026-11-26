@@ -22,6 +22,8 @@ module Aster
           -- alias가 있으면 typedef struct, 없으면 plain struct
           | StructDef(identifier tag, identifier? alias, struct_member* members,
                       access? access)
+          | TypeAlias(identifier name, typeref ty)
+          | ExportType(identifier name)
           | VarDecl(typeref ty, identifier name, initializer init, int is_const,
                     int is_readonly, access? access)
           -- enum Color { RED, GREEN, BLUE }  (값은 선언 순서 ordinal)

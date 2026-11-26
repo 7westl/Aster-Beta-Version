@@ -1,0 +1,12 @@
+import System.stdout.*;
+import p6lib.aliases as myfile;
+
+typedef local_alias myfile.mylisttype;
+
+myfile.mylisttype empty;
+myfile.exportedlist exported;
+local_alias values = [[1, 2], [3]];
+println(typeName(empty));
+println(typeName(exported));
+println(typeName(values));
+println(values[0][1]);

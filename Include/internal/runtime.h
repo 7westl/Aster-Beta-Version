@@ -126,6 +126,7 @@ typedef struct IterCursor {
 
 struct RValue {
     RKind kind;
+    const char *type_name_override;
     union {
         int64_t i;
         double f;
@@ -312,6 +313,8 @@ typedef struct {
 struct AstStructType {
     const char *tag;
     const char *alias;
+    typeref_ty type_alias_target;
+    int is_type_alias;
     StructFieldDesc *fields;
     size_t nfields;
     StructCtorDesc *ctors;
@@ -429,6 +432,7 @@ RValue *RValue_ExcClass(Interp *in, const char *name);
 RValue *RValue_Class(Interp *in, AstClass *cls);
 RValue *RValue_Generator(Interp *in, AstFn *fn, Env *body_env, RValue *self);
 RValue *RValue_StructType(Interp *in, AstStructType *type);
+RValue *RValue_CopyWithTypeName(Interp *in, RValue *value, const char *name);
 RValue *RValue_List(Interp *in, AsterList *list);
 RValue *RValue_Tuple(Interp *in, AsterTuple *tuple);
 RValue *RValue_Dict(Interp *in, AsterDict *dict);
@@ -569,6 +573,7 @@ AstModule *Module_RegisterBuiltin(Interp *in, const char *name); /* C 제공 모
 void Module_AddExport(AstModule *module, Interp *in, const char *name);
 void Module_HideExport(AstModule *module, Interp *in, const char *name);
 RValue *Module_GetExported(Interp *in, AstModule *module, const char *name);
+AstStructType *TypeAlias_Find(Interp *in, Env *env, const char *name);
 
 /* 'a.b' 모듈 파일을 찾는다. base_dir → stdlib_dir → module_dirs 순서. */
 int Aster_ResolveModuleFile(const char *base_dir, const char *stdlib_dir,

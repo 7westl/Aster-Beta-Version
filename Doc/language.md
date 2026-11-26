@@ -166,6 +166,34 @@ interface Mapper { fn map(int value) -> int; }
 Mapper m = (int x) -> int => x + 1;           # OK: 함수형 인터페이스
 ```
 
+### 타입 별칭
+
+`typedef 이름 타입;`으로 기존 타입에 별칭을 붙입니다. 별칭 타입으로 선언된
+값의 `typeName()`은 원래 컬렉션 이름 대신 별칭 이름을 반환합니다.
+
+```aster
+typedef mylisttype list<list<int>>;
+mylisttype myList;
+println(typeName(myList));  # mylisttype
+```
+
+타입 별칭을 먼저 선언한 뒤 공개하려면 `export type 이름;`을 쓰고, 선언과
+공개를 한 번에 하려면 `export typedef 이름 타입;`을 씁니다. 공개된 별칭은
+다른 문서에서 모듈을 가져온 뒤 `myfile.mylisttype`처럼 타입으로 사용할 수
+있습니다.
+
+```aster
+# myfile.ast
+typedef mylisttype list<list<int>>;
+export type mylisttype;
+export typedef exportedlist list<list<int>>;
+
+# 사용 문서
+import myfile;
+myfile.mylisttype values;
+myfile.exportedlist moreValues;
+```
+
 ### 합집합 타입
 
 `|`로 여러 타입 중 하나를 받는 타입을 씁니다. 변수, 매개변수, 반환 타입,

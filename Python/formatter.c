@@ -1354,6 +1354,14 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
             fputs("};\n", out);
         }
         break;
+    case TypeAlias_kind:
+        ind(out, indent);
+        fputs("typedef ", out);
+        fputs(s->v.TypeAlias.name, out);
+        fputc(' ', out);
+        fmt_type(out, s->v.TypeAlias.ty);
+        fputs(";\n", out);
+        break;
     case VarDecl_kind:
         ind(out, indent);
         fputs(access_str(s->v.VarDecl.access), out);
@@ -1607,6 +1615,10 @@ static void fmt_stmt(FILE *out, stmt_ty s, int indent) {
         fputs("export ", out);
         g_skip_indent = 1;
         fmt_stmt(out, s->v.Export.body, indent);
+        break;
+    case ExportType_kind:
+        ind(out, indent);
+        fprintf(out, "export type %s;\n", s->v.ExportType.name);
         break;
     case ExceptionDef_kind:
         ind(out, indent);

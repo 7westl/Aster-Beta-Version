@@ -8,6 +8,10 @@ All notable changes to Aster are documented here. The format follows
 
 ### Added
 
+- Added `typedef name type;` type aliases. Aliases can be exported alongside
+  their declaration with `export typedef name type;` or separately with
+  `export type name;`.
+- Tetris game made with Aster is now implemented at tmp/tetris/tetris.ast .
 - Pointer values now render with their raw slot address in lowercase hexadecimal
   (`<pointer 0x...>`) instead of `<pointer>` when printed or converted with `str`.
 - The bytecode VM now reuses per-iteration block environments instead of building

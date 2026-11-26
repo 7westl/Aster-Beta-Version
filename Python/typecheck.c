@@ -41,6 +41,7 @@ typedef struct FieldInfo FieldInfo;
 typedef struct Checker Checker;
 typedef struct ModuleInfo ModuleInfo;
 typedef struct PendingModule PendingModule;
+typedef struct TypeAliasInfo TypeAliasInfo;
 
 struct Ty {
     TyKind kind;
@@ -135,6 +136,14 @@ struct StructInfo {
     StructInfo *next;
 };
 
+struct TypeAliasInfo {
+    const char *name;
+    typeref_ty target;
+    Ty *resolved;
+    int resolving;
+    TypeAliasInfo *next;
+};
+
 struct EnumInfo {
     const char *name;
     const char **variants;
@@ -152,6 +161,7 @@ struct Checker {
     Scope *scope;
     ClassInfo *classes;
     StructInfo *structs;
+    TypeAliasInfo *type_aliases;
     EnumInfo *enums;
     ClassInfo *current_class;
     Ty *current_ret;
@@ -693,10 +703,58 @@ static Ty *tparam_bound(Checker *c, const char *name) {
 }
 
 static Ty *typeref_to_ty(Checker *c, typeref_ty ty);
+static Sym *lookup_sym(Checker *c, const char *name, int skip_narrowed);
+static ModuleInfo *find_module(Checker *c, const char *name);
+static Ty *module_export_type(ModuleInfo *mi, const char *name);
+
+static TypeAliasInfo *find_type_alias(Checker *c, const char *name) {
+    TypeAliasInfo *alias;
+    for (alias = c->type_aliases; alias; alias = alias->next)
+        if (!strcmp(alias->name, name))
+            return alias;
+    return NULL;
+}
+
+static Ty *type_alias_to_ty(Checker *c, TypeAliasInfo *alias) {
+    if (!alias)
+        return NULL;
+    if (alias->resolved)
+        return alias->resolved;
+    if (alias->resolving)
+        return ty_any(c);
+    alias->resolving = 1;
+    alias->resolved = typeref_to_ty(c, alias->target);
+    alias->resolving = 0;
+    return alias->resolved;
+}
 
 static Ty *named_to_ty(Checker *c, const char *name, asdl_seq *args) {
     Ty *elem = NULL;
     size_t nargs = args ? asdl_seq_LEN(args) : 0;
+    TypeAliasInfo *alias = find_type_alias(c, name);
+
+    if (alias)
+        return type_alias_to_ty(c, alias);
+    {
+        const char *dot = strchr(name, '.');
+        if (dot && dot != name && dot[1]) {
+            size_t prefix_len = (size_t)(dot - name);
+            char prefix[512];
+            Sym *module_sym;
+            if (prefix_len < sizeof prefix) {
+                memcpy(prefix, name, prefix_len);
+                prefix[prefix_len] = 0;
+                module_sym = lookup_sym(c, prefix, 0);
+                if (module_sym && module_sym->ty &&
+                    module_sym->ty->kind == TY_MODULE) {
+                    ModuleInfo *mi = find_module(c, module_sym->ty->name);
+                    Ty *exported = module_export_type(mi, dot + 1);
+                    if (exported)
+                        return exported;
+                }
+            }
+        }
+    }
 
     if (!strcmp(name, "var") || !strcmp(name, "any") || !strcmp(name, "void"))
         return ty_any(c);
@@ -1546,6 +1604,8 @@ static const char *exported_name(stmt_ty s) {
         return s->v.ClassDef.name;
     case StructDef_kind:
         return s->v.StructDef.tag;
+    case TypeAlias_kind:
+        return s->v.TypeAlias.name;
     case InterfaceDef_kind:
         return s->v.InterfaceDef.name;
     case ExceptionDef_kind:
@@ -1626,6 +1686,8 @@ static int has_explicit_visibility(asdl_seq *body) {
         stmt_ty s = asdl_seq_GET(body, i);
         if (s->kind == Export_kind)
             return 1;
+        if (s->kind == ExportType_kind)
+            return 1;
         if (stmt_access(s) == Public && !stmt_module_static(s))
             return 1;
     }
@@ -1641,6 +1703,10 @@ static void snapshot_exports(Checker *c, ModuleInfo *mi, asdl_seq *body) {
             stmt_ty s = asdl_seq_GET(body, i);
             stmt_ty decl = s->kind == Export_kind ? s->v.Export.body : s;
             const char *name;
+            if (s->kind == ExportType_kind) {
+                module_add_export(c, mi, s->v.ExportType.name);
+                continue;
+            }
             if (s->kind != Export_kind &&
                 (stmt_access(s) != Public || stmt_module_static(s)))
                 continue;
@@ -1730,6 +1796,16 @@ static void preregister_stmt(Checker *c, stmt_ty s) {
             si->alias = s->v.StructDef.alias;
             si->next = c->structs;
             c->structs = si;
+        }
+        break;
+    case TypeAlias_kind:
+        if (!find_type_alias(c, s->v.TypeAlias.name)) {
+            TypeAliasInfo *alias = Arena_Alloc(c->arena, sizeof(TypeAliasInfo));
+            memset(alias, 0, sizeof(*alias));
+            alias->name = s->v.TypeAlias.name;
+            alias->target = s->v.TypeAlias.ty;
+            alias->next = c->type_aliases;
+            c->type_aliases = alias;
         }
         break;
     case EnumDef_kind:
@@ -3336,6 +3412,10 @@ static void collect_stmt(Checker *c, stmt_ty s) {
         if (s->v.StructDef.alias)
             define_or_update(c, s->v.StructDef.alias, ty_struct(c, s->v.StructDef.tag));
         break;
+    case TypeAlias_kind:
+        define_or_update(c, s->v.TypeAlias.name,
+                         named_to_ty(c, s->v.TypeAlias.name, NULL));
+        break;
     case ExceptionDef_kind: {
         ClassInfo *ci = find_class(c, s->v.ExceptionDef.name);
         if (!ci) {
@@ -3462,6 +3542,8 @@ static void collect_stmt(Checker *c, stmt_ty s) {
     }
     case Export_kind:
         collect_stmt(c, s->v.Export.body);
+        break;
+    case ExportType_kind:
         break;
     default:
         break;
@@ -4305,6 +4387,14 @@ static void check_stmt(Checker *c, stmt_ty s) {
         break;
     case StructDef_kind:
         check_struct(c, s);
+        break;
+    case TypeAlias_kind:
+        break;
+    case ExportType_kind:
+        if (!find_type_alias(c, s->v.ExportType.name))
+            check_error(c, s->lineno, s->col_offset,
+                        "cannot export unknown type alias '%s'",
+                        s->v.ExportType.name);
         break;
     case ExceptionDef_kind:
         break;

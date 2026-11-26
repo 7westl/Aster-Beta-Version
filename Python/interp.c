@@ -401,6 +401,9 @@ static int stmt_escapes_env(stmt_ty s) {
     case ExceptionDef_kind:
     case Yield_kind:
         return 1;
+    case TypeAlias_kind:
+    case ExportType_kind:
+        return 0;
     case VarDecl_kind:
         return initializer_escapes_env(s->v.VarDecl.init);
     case Destructure_kind:
@@ -716,6 +719,9 @@ static int stmt_refs_super(stmt_ty s) {
         return 0;
     case StructDef_kind:
         return struct_members_ref_super(s->v.StructDef.members);
+    case TypeAlias_kind:
+    case ExportType_kind:
+        return 0;
     case VarDecl_kind:
         return init_refs_super(s->v.VarDecl.init);
     case EnumDef_kind:
@@ -2317,38 +2323,39 @@ static int class_name_matches(AstClass *cls, const char *name) {
     return 0;
 }
 
-static int value_is_type(Interp *in, RValue *v, typeref_ty ty) {
-    (void)in;
+static int value_is_type_in_env(Interp *in, Env *env, RValue *v, typeref_ty ty) {
     if (!v || !ty)
         return 0;
+    if (ty->kind == Named_kind) {
+        AstStructType *alias = TypeAlias_Find(in, env, ty->v.Named.name);
+        if (alias && alias->type_alias_target)
+            return value_is_type_in_env(in, env, v, alias->type_alias_target);
+    }
     switch (ty->kind) {
     case Primitive_kind:
         switch (ty->v.Primitive.kind) {
-        case IntT:
-            return v->kind == RV_INT;
-        case FloatT:
-            return v->kind == RV_FLOAT;
-        case BoolT:
-            return v->kind == RV_BOOL;
-        case StrT:
-            return v->kind == RV_STR;
-        case NullT:
-            return v->kind == RV_NULL;
+        case IntT: return v->kind == RV_INT;
+        case FloatT: return v->kind == RV_FLOAT;
+        case BoolT: return v->kind == RV_BOOL;
+        case StrT: return v->kind == RV_STR;
+        case NullT: return v->kind == RV_NULL;
         }
         return 0;
     case Nullable_kind:
-        return v->kind == RV_NULL || value_is_type(in, v, ty->v.Nullable.base);
+        return v->kind == RV_NULL ||
+               value_is_type_in_env(in, env, v, ty->v.Nullable.base);
     case Pointer_kind:
         if (v->kind == RV_NULL)
             return 1;
         if (v->kind == RV_PTR) {
             RValue *inner = v->u.ptr.slot ? *v->u.ptr.slot : NULL;
-            return inner && value_is_type(in, inner, ty->v.Pointer.base);
+            return inner && value_is_type_in_env(in, env, inner,
+                                                 ty->v.Pointer.base);
         }
-        return value_is_type(in, v, ty->v.Pointer.base);
+        return value_is_type_in_env(in, env, v, ty->v.Pointer.base);
     case FunctionTy_kind:
-        return v->kind == RV_FUNC || v->kind == RV_BUILTIN || v->kind == RV_OVERLOAD ||
-               v->kind == RV_VARIANT_CTOR;
+        return v->kind == RV_FUNC || v->kind == RV_BUILTIN ||
+               v->kind == RV_OVERLOAD || v->kind == RV_VARIANT_CTOR;
     case StructRef_kind:
         if (v->kind == RV_STRUCT) {
             AstStructType *t = v->u.stv->type;
@@ -2356,10 +2363,26 @@ static int value_is_type(Interp *in, RValue *v, typeref_ty ty) {
                    (t->alias && !strcmp(t->alias, ty->v.StructRef.tag));
         }
         if (v->kind == RV_PTR && v->u.ptr.slot && *v->u.ptr.slot)
-            return value_is_type(in, *v->u.ptr.slot, ty);
+            return value_is_type_in_env(in, env, *v->u.ptr.slot, ty);
         return 0;
     case Named_kind: {
         const char *name = ty->v.Named.name;
+        RValue **cell = Env_LookupCell(env, name);
+        if (cell && *cell && (*cell)->kind == RV_CLASS)
+            return v->kind == RV_OBJECT &&
+                   class_name_matches(v->u.obj->cls, name);
+        if (!strcmp(name, "list") || !strcmp(name, "List") ||
+            !strcmp(name, "array"))
+            return v->kind == RV_LIST;
+        if (!strcmp(name, "tuple") || !strcmp(name, "Tuple"))
+            return v->kind == RV_TUPLE;
+        if (!strcmp(name, "dict") || !strcmp(name, "map") ||
+            !strcmp(name, "Map"))
+            return v->kind == RV_DICT;
+        if (!strcmp(name, "set") || !strcmp(name, "Set"))
+            return v->kind == RV_SET;
+        if (!strcmp(name, "frozenset") || !strcmp(name, "FrozenSet"))
+            return v->kind == RV_FROZENSET;
         if (v->kind == RV_OBJECT)
             return class_name_matches(v->u.obj->cls, name);
         if (v->kind == RV_EXC)
@@ -2371,18 +2394,23 @@ static int value_is_type(Interp *in, RValue *v, typeref_ty ty) {
             return !strcmp(t->tag, name) || (t->alias && !strcmp(t->alias, name));
         }
         if (v->kind == RV_PTR && v->u.ptr.slot && *v->u.ptr.slot)
-            return value_is_type(in, *v->u.ptr.slot, ty);
+            return value_is_type_in_env(in, env, *v->u.ptr.slot, ty);
         return 0;
     }
     case UnionTy_kind: {
         size_t i;
         for (i = 0; i < (size_t)asdl_seq_LEN(ty->v.UnionTy.members); i++)
-            if (value_is_type(in, v, asdl_seq_GET(ty->v.UnionTy.members, i)))
+            if (value_is_type_in_env(in, env, v,
+                                     asdl_seq_GET(ty->v.UnionTy.members, i)))
                 return 1;
         return 0;
     }
     }
     return 0;
+}
+
+static int value_is_type(Interp *in, RValue *value, typeref_ty ty) {
+    return value_is_type_in_env(in, in->globals, value, ty);
 }
 
 static RValue *do_cast(Interp *in, typeref_ty ty, RValue *value) {
@@ -2480,8 +2508,18 @@ static AstStructType *struct_type_from_typeref(Interp *in, Env *env, typeref_ty 
         return Struct_FindType(env, ty->v.StructRef.tag);
     if (ty->kind == Named_kind) {
         RValue **cell = Env_LookupCell(env, ty->v.Named.name);
+        if (cell && *cell && (*cell)->kind == RV_STRUCTTYPE &&
+            (*cell)->u.stype->is_type_alias)
+            return struct_type_from_typeref(in, env,
+                                            (*cell)->u.stype->type_alias_target);
         if (cell && *cell && (*cell)->kind == RV_STRUCTTYPE)
             return (*cell)->u.stype;
+        {
+            AstStructType *alias = TypeAlias_Find(in, env, ty->v.Named.name);
+            if (alias)
+                return struct_type_from_typeref(in, env,
+                                                alias->type_alias_target);
+        }
     }
     return NULL;
 }
@@ -2902,6 +2940,8 @@ static AstStructType *build_struct(Interp *in, stmt_ty s, Env *env,
         *root_slot = type;
     type->tag = s->v.StructDef.tag;
     type->alias = s->v.StructDef.alias;
+    type->type_alias_target = NULL;
+    type->is_type_alias = 0;
     type->env = env;
 
     for (i = 0; i < n; i++) {
@@ -3230,6 +3270,17 @@ static Signal exec_decl(Interp *in, stmt_ty s, Env *env) {
             Aster_GC_PopRoot();
         }
         return SIG_OK;
+    case TypeAlias_kind:
+        if (!Env_HasLocal(env, s->v.TypeAlias.name)) {
+            AstStructType *type = Arena_Alloc(in->arena, sizeof(AstStructType));
+            memset(type, 0, sizeof(*type));
+            type->tag = s->v.TypeAlias.name;
+            type->type_alias_target = s->v.TypeAlias.ty;
+            type->is_type_alias = 1;
+            type->env = env;
+            Env_Define(in, env, type->tag, RValue_StructType(in, type));
+        }
+        return SIG_OK;
     case InterfaceDef_kind:
         if (!Env_HasLocal(env, s->v.InterfaceDef.name)) {
             AstClass *cls = Arena_Alloc(in->arena, sizeof(AstClass));
@@ -3396,6 +3447,7 @@ static void predeclare_one(Interp *in, Env *env, stmt_ty s, int define_vars) {
     case FunctionDef_kind:
     case ClassDef_kind:
     case StructDef_kind:
+    case TypeAlias_kind:
     case InterfaceDef_kind:
     case ExceptionDef_kind:
     case EnumDef_kind:
@@ -3474,17 +3526,18 @@ static int declared_type_known(typeref_ty ty) {
     return 0;
 }
 
-static int check_declared_value(Interp *in, typeref_ty ty, RValue *value) {
+static int check_declared_value_in_env(Interp *in, Env *env,
+                                      typeref_ty ty, RValue *value) {
     if (!declared_type_known(ty) || !value)
         return 1;
     if (ty->kind == Named_kind) {
-        RValue **cell = Env_LookupCell(in->globals, ty->v.Named.name);
+        RValue **cell = Env_LookupCell(env, ty->v.Named.name);
         if (!cell || !*cell ||
             ((*cell)->kind != RV_CLASS && (*cell)->kind != RV_STRUCTTYPE &&
              (*cell)->kind != RV_EXC_CLASS))
             return 1;
     }
-    if (!value_is_type(in, value, ty)) {
+    if (!value_is_type_in_env(in, env, value, ty)) {
         RT_Throw(in, "TypeError", "cannot assign %s to a variable of type %s",
                  typeref_name(ty), RValue_TypeName(value));
         return 0;
@@ -3492,9 +3545,14 @@ static int check_declared_value(Interp *in, typeref_ty ty, RValue *value) {
     return 1;
 }
 
+static int check_declared_value(Interp *in, typeref_ty ty, RValue *value) {
+    return check_declared_value_in_env(in, in->globals, ty, value);
+}
+
 /* 이미 계산한 초기값을 선언문에 맞춰 정의한다. 트리 워커와 VM이 함께 쓴다. */
 static Signal define_var_value(Interp *in, Env *env, stmt_ty s, RValue *value) {
     initializer_ty init = s->v.VarDecl.init;
+    AstStructType *alias = NULL;
     /* 람다 초기화에서 선언 타입은 람다의 반환 타입 표기다. 값은 람다 자체다. */
     int lambda_init = init && init->kind == ExprInit_kind &&
                       init->v.ExprInit.value->kind == Lambda_kind;
@@ -3504,8 +3562,13 @@ static Signal define_var_value(Interp *in, Env *env, stmt_ty s, RValue *value) {
         s->v.VarDecl.ty->kind == Primitive_kind &&
         s->v.VarDecl.ty->v.Primitive.kind == FloatT)
         value = RValue_Float(in, (double)value->u.i);
-    if (!lambda_init && !check_declared_value(in, s->v.VarDecl.ty, value))
+    if (!lambda_init &&
+        !check_declared_value_in_env(in, env, s->v.VarDecl.ty, value))
         return in->sig;
+    if (s->v.VarDecl.ty && s->v.VarDecl.ty->kind == Named_kind)
+        alias = TypeAlias_Find(in, env, s->v.VarDecl.ty->v.Named.name);
+    if (alias && value)
+        value = RValue_CopyWithTypeName(in, value, alias->tag);
     if (s->v.VarDecl.is_const || s->v.VarDecl.is_readonly)
         Env_DefineConst(in, env, s->v.VarDecl.name, RValue_Copy(in, value));
     else
@@ -4042,6 +4105,7 @@ static int stmt_declares_names(stmt_ty s) {
     case FunctionDef_kind:
     case ClassDef_kind:
     case StructDef_kind:
+    case TypeAlias_kind:
     case InterfaceDef_kind:
     case ExceptionDef_kind:
     case EnumDef_kind:
@@ -4238,7 +4302,7 @@ static Signal exec_for_in(Interp *in, stmt_ty s, Env *env) {
             return in->sig;
         if (ended)
             break;
-        if (!check_declared_value(in, s->v.ForIn.ty, item))
+        if (!check_declared_value_in_env(in, loop_env, s->v.ForIn.ty, item))
             return in->sig;
         *cell = item;
         iter_env = fresh ? (pooled ? Env_AcquireBlock(in, loop_env) : Env_New(in, loop_env))
@@ -4429,6 +4493,8 @@ static const char *exported_stmt_name(stmt_ty s) {
         return s->v.ClassDef.name;
     case StructDef_kind:
         return s->v.StructDef.tag;
+    case TypeAlias_kind:
+        return s->v.TypeAlias.name;
     case InterfaceDef_kind:
         return s->v.InterfaceDef.name;
     case ExceptionDef_kind:
@@ -4483,6 +4549,8 @@ static int module_has_explicit(asdl_seq *body) {
         stmt_ty s = asdl_seq_GET(body, i);
         if (s->kind == Export_kind)
             return 1;
+        if (s->kind == ExportType_kind)
+            return 1;
         if (module_stmt_access(s) == Public && !module_stmt_static(s))
             return 1;
     }
@@ -4509,6 +4577,10 @@ static void collect_module_exports(Interp *in, AstModule *module, asdl_seq *body
         stmt_ty s = asdl_seq_GET(body, i);
         stmt_ty decl = s->kind == Export_kind ? s->v.Export.body : s;
         const char *name;
+        if (s->kind == ExportType_kind) {
+            Module_AddExport(module, in, s->v.ExportType.name);
+            continue;
+        }
         if (s->kind != Export_kind &&
             (module_stmt_access(s) != Public || module_stmt_static(s)))
             continue;
@@ -4822,6 +4894,8 @@ static const char *debug_stmt_name(stmt_ty s) {
     case ClassDef_kind: return "class";
     case InterfaceDef_kind: return "interface";
     case StructDef_kind: return "struct";
+    case TypeAlias_kind: return "typedef";
+    case ExportType_kind: return "export type";
     case VarDecl_kind: return "var";
     case EnumDef_kind: return "enum";
     case Destructure_kind: return "unpack";
@@ -5011,6 +5085,7 @@ static Signal exec_stmt(Interp *in, stmt_ty s, Env *env) {
     case FunctionDef_kind:
     case ClassDef_kind:
     case StructDef_kind:
+    case TypeAlias_kind:
     case InterfaceDef_kind:
     case ExceptionDef_kind:
     case EnumDef_kind:
@@ -5066,6 +5141,8 @@ static Signal exec_stmt(Interp *in, stmt_ty s, Env *env) {
         return exec_import_from(in, s, env);
     case Export_kind:
         return exec_stmt(in, s->v.Export.body, env);
+    case ExportType_kind:
+        return SIG_OK;
     case ExprStmt_kind: {
         RValue *value = eval(in, s->v.ExprStmt.value, env);
         if (in->repl && in->sig == SIG_OK && value && value->kind != RV_NULL) {
@@ -5729,7 +5806,8 @@ static RValue *eval(Interp *in, expr_ty e, Env *env) {
         RValue *value = eval(in, e->v.Is.value, env);
         if (in->sig != SIG_OK)
             return NULL;
-        return RValue_Bool(in, value_is_type(in, value, e->v.Is.ty));
+        return RValue_Bool(in, value_is_type_in_env(in, env, value,
+                                                    e->v.Is.ty));
     }
     case In_kind: {
         RValue *item = eval(in, e->v.In.item, env);

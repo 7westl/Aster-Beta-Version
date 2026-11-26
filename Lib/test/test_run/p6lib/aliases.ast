@@ -1,0 +1,3 @@
+typedef mylisttype list<list<int>>;
+export type mylisttype;
+export typedef exportedlist list<list<int>>;

@@ -45,7 +45,7 @@ struct _mod {
     } v;
 };
 
-enum _stmt_kind { FunctionDef_kind = 1, ClassDef_kind = 2, InterfaceDef_kind = 3, StructDef_kind = 4, VarDecl_kind = 5, EnumDef_kind = 6, Destructure_kind = 7, Assert_kind = 8, Assign_kind = 9, If_kind = 10, While_kind = 11, For_kind = 12, ForRange_kind = 13, ForIn_kind = 14, Switch_kind = 15, Try_kind = 16, Yield_kind = 17, Return_kind = 18, Throw_kind = 19, Break_kind = 20, Continue_kind = 21, Import_kind = 22, ImportFrom_kind = 23, Export_kind = 24, ExceptionDef_kind = 25, ExprStmt_kind = 26 };
+enum _stmt_kind { FunctionDef_kind = 1, ClassDef_kind = 2, InterfaceDef_kind = 3, StructDef_kind = 4, TypeAlias_kind = 5, ExportType_kind = 6, VarDecl_kind = 7, EnumDef_kind = 8, Destructure_kind = 9, Assert_kind = 10, Assign_kind = 11, If_kind = 12, While_kind = 13, For_kind = 14, ForRange_kind = 15, ForIn_kind = 16, Switch_kind = 17, Try_kind = 18, Yield_kind = 19, Return_kind = 20, Throw_kind = 21, Break_kind = 22, Continue_kind = 23, Import_kind = 24, ImportFrom_kind = 25, Export_kind = 26, ExceptionDef_kind = 27, ExprStmt_kind = 28 };
 struct _stmt {
     enum _stmt_kind kind;
     union {
@@ -53,6 +53,8 @@ struct _stmt {
         struct { identifier name; asdl_seq *type_params; typeref_ty base; asdl_seq *interfaces; asdl_seq *members; access_ty access; } ClassDef;
         struct { identifier name; asdl_seq *type_params; asdl_seq *methods; access_ty access; } InterfaceDef;
         struct { identifier tag; identifier alias; asdl_seq *members; access_ty access; } StructDef;
+        struct { identifier name; typeref_ty ty; } TypeAlias;
+        struct { identifier name; } ExportType;
         struct { typeref_ty ty; identifier name; initializer_ty init; int is_const; int is_readonly; access_ty access; } VarDecl;
         struct { identifier name; asdl_seq *members; asdl_seq *methods; access_ty access; } EnumDef;
         struct { asdl_seq *names; expr_ty value; } Destructure;
@@ -276,6 +278,8 @@ stmt_ty _Aster_FunctionDef(identifier name, asdl_seq *type_params, asdl_seq *par
 stmt_ty _Aster_ClassDef(identifier name, asdl_seq *type_params, typeref_ty base, asdl_seq *interfaces, asdl_seq *members, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 stmt_ty _Aster_InterfaceDef(identifier name, asdl_seq *type_params, asdl_seq *methods, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 stmt_ty _Aster_StructDef(identifier tag, identifier alias, asdl_seq *members, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
+stmt_ty _Aster_TypeAlias(identifier name, typeref_ty ty, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
+stmt_ty _Aster_ExportType(identifier name, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 stmt_ty _Aster_VarDecl(typeref_ty ty, identifier name, initializer_ty init, int is_const, int is_readonly, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 stmt_ty _Aster_EnumDef(identifier name, asdl_seq *members, asdl_seq *methods, access_ty access, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);
 stmt_ty _Aster_Destructure(asdl_seq *names, expr_ty value, int lineno, int col_offset, int end_lineno, int end_col_offset, Arena *arena);

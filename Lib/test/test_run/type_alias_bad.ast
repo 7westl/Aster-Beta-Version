@@ -1,0 +1,2 @@
+typedef mylisttype list<list<int>>;
+mylisttype invalid = [1];
